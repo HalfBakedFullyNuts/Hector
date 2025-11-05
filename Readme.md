@@ -101,14 +101,56 @@ Beim Start prueft der Service Pflichtwerte und bricht mit einer aussagekraeftige
 ## Qualitaetssicherung (T-012)
 
 ```bash
-uv run lint        # Ruff lint
-uv run format      # Ruff format (in-place)
-uv run format:check
-uv run typecheck   # MyPy
-uv run test        # Pytest
+# Innerhalb der venv oder mit aktiviertem Python 3.12
+ruff check .           # Ruff lint
+ruff format .          # Ruff format (in-place)
+ruff format --check .  # Format check
+mypy src               # MyPy type check
+pytest                 # Run tests
+pip-audit              # Security audit
 ```
 
 Die CI-Pipeline (`.github/workflows/ci.yml`) fuehrt dieselben Pruefungen aus und blockiert fehlerhafte Pull Requests.
+
+### Pre-commit Hooks (T-013)
+
+Das Projekt unterstuetzt Pre-commit Hooks fuer automatische Qualitaetschecks vor Commits:
+
+```bash
+# Pre-commit installieren (falls noch nicht geschehen)
+source .venv/bin/activate
+pip install pre-commit
+
+# Hooks aktivieren
+pre-commit install
+
+# Manuell auf allen Dateien ausfuehren
+pre-commit run --all-files
+```
+
+Die Hooks fuehren automatisch folgende Checks aus:
+- Trailing Whitespace entfernen
+- End-of-file fixer
+- YAML/TOML Syntax-Check
+- Ruff Linting und Formatierung
+- MyPy Type-Checking
+
+## Sicherheit (T-031)
+
+### Dependency Scanning
+
+Das Projekt nutzt `pip-audit` zur Pruefung auf bekannte Schwachstellen in Abhaengigkeiten:
+
+```bash
+source .venv/bin/activate
+pip-audit
+```
+
+Security Audits laufen automatisch in der CI-Pipeline.
+
+### Meldung von Sicherheitsluecken
+
+Siehe `SECURITY.md` fuer Details zur verantwortungsvollen Offenlegung von Sicherheitsproblemen.
 
 ## Projektstruktur
 

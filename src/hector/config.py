@@ -35,11 +35,9 @@ def get_settings() -> Settings:
     """Load settings and cache the result for reuse."""
 
     try:
-        return Settings()
+        return Settings()  # type: ignore[call-arg]
     except ValidationError as exc:  # pragma: no cover - defensive
-        errors = ", ".join(
-            f"{e['loc'][0]}: {e['msg']}" for e in exc.errors()
-        )
+        errors = ", ".join(f"{e['loc'][0]}: {e['msg']}" for e in exc.errors())
         raise RuntimeError(f"Invalid configuration: {errors}") from exc
 
 

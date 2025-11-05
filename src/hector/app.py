@@ -10,7 +10,6 @@ from .logging_config import setup_logging
 from .middleware import middleware_stack
 from .routers import get_router
 
-
 LOG = logging.getLogger(__name__)
 
 

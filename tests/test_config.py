@@ -1,7 +1,5 @@
 """Configuration loading tests."""
 
-import os
-
 import pytest
 
 from hector.config import get_settings, reset_settings_cache

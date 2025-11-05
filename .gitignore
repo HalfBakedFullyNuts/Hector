@@ -13,6 +13,12 @@ dist/
 venv/
 env/
 
+# Environment variables
+.env
+
+# UV lock file
+uv.lock
+
 # Editors
 .idea/
 .vscode/

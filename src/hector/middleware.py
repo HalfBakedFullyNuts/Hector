@@ -2,12 +2,11 @@
 
 import contextvars
 import uuid
-from typing import Callable
+from collections.abc import Callable
 
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
 from starlette.requests import Request
 from starlette.responses import Response
-
 
 _request_id_ctx: contextvars.ContextVar[str] = contextvars.ContextVar("request_id")
 

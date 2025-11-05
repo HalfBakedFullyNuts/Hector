@@ -14,10 +14,18 @@ def test_settings() -> Settings:
 
 
 @pytest.mark.asyncio()
-async def test_health_endpoint_returns_ok(test_settings: Settings) -> None:
-    app = create_app(test_settings)
+async def test_health_endpoint_returns_ok(
+    test_settings: Settings, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from httpx import ASGITransport
 
-    async with AsyncClient(app=app, base_url="http://test") as client:
+    # Set environment variable so Depends(get_settings) works
+    monkeypatch.setenv("HECTOR_ENVIRONMENT", "test")
+
+    app = create_app(test_settings)
+    transport = ASGITransport(app=app)
+
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
         response = await client.get("/health")
 
     assert response.status_code == 200
