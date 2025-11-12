@@ -29,6 +29,17 @@ class Settings(BaseSettings):
         pattern=r"^[A-Za-z0-9_-]+$",
     )
 
+    # Database settings
+    database_url: str = Field(
+        ...,
+        description="PostgreSQL database connection string",
+    )
+    db_pool_size: int = Field(5, ge=1, le=50, description="Database connection pool size")
+    db_max_overflow: int = Field(
+        10, ge=0, le=100, description="Maximum number of connections beyond pool size"
+    )
+    db_echo: bool = Field(False, description="Echo SQL statements for debugging")
+
 
 @lru_cache(maxsize=1)
 def get_settings() -> Settings:
