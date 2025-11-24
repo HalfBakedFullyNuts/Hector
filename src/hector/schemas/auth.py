@@ -69,6 +69,16 @@ class UserLoginRequest(BaseModel):
     )
 
 
+class TokenRefreshRequest(BaseModel):
+    """Request schema for refreshing access token."""
+
+    refresh_token: str = Field(
+        ...,
+        min_length=1,
+        description="JWT refresh token",
+    )
+
+
 class TokenResponse(BaseModel):
     """Response schema for authentication tokens."""
 

@@ -841,3 +841,223 @@ class TestGetCurrentUser:
             data = response.json()
             assert data["email"] == user.email
             assert data["role"] == user.role.value
+
+
+class TestRefreshToken:
+    """Tests for POST /auth/refresh endpoint."""
+
+    async def test_refresh_token_success(
+        self,
+        client: AsyncClient,
+        db_session: AsyncSession,
+    ) -> None:
+        """Test successful token refresh."""
+        from hector.auth.jwt import create_refresh_token
+        from hector.auth.password import hash_password
+
+        # Create a test user
+        user = User(
+            email="refresh@example.com",
+            hashed_password=hash_password("SecurePass123"),
+            role=UserRole.DOG_OWNER,
+            is_active=True,
+        )
+        db_session.add(user)
+        await db_session.commit()
+        await db_session.refresh(user)
+
+        # Generate refresh token
+        refresh_token = create_refresh_token(
+            user_id=user.id,
+            email=user.email,
+            role=user.role.value,
+        )
+
+        # Make refresh request
+        payload = {"refresh_token": refresh_token}
+        response = await client.post("/auth/refresh", json=payload)
+
+        assert response.status_code == 200
+        data = response.json()
+        assert "access_token" in data
+        assert "refresh_token" in data
+        assert data["token_type"] == "bearer"
+        assert len(data["access_token"]) > 0
+        assert len(data["refresh_token"]) > 0
+        # New refresh token should be different from old one
+        assert data["refresh_token"] != refresh_token
+
+    async def test_refresh_token_invalid_token(
+        self,
+        client: AsyncClient,
+    ) -> None:
+        """Test refresh with invalid token."""
+        payload = {"refresh_token": "invalid_token_here"}
+        response = await client.post("/auth/refresh", json=payload)
+
+        assert response.status_code == 401
+        data = response.json()
+        assert "Invalid or expired refresh token" in data["detail"]
+
+    async def test_refresh_token_with_access_token(
+        self,
+        client: AsyncClient,
+        db_session: AsyncSession,
+    ) -> None:
+        """Test refresh with access token (wrong type)."""
+        from hector.auth.jwt import create_access_token
+        from hector.auth.password import hash_password
+
+        # Create a test user
+        user = User(
+            email="wrongtoken@example.com",
+            hashed_password=hash_password("SecurePass123"),
+            role=UserRole.DOG_OWNER,
+            is_active=True,
+        )
+        db_session.add(user)
+        await db_session.commit()
+        await db_session.refresh(user)
+
+        # Generate access token (wrong type)
+        access_token = create_access_token(
+            user_id=user.id,
+            email=user.email,
+            role=user.role.value,
+        )
+
+        # Try to use access token for refresh
+        payload = {"refresh_token": access_token}
+        response = await client.post("/auth/refresh", json=payload)
+
+        assert response.status_code == 401
+        data = response.json()
+        assert "Invalid or expired refresh token" in data["detail"]
+
+    async def test_refresh_token_expired(
+        self,
+        client: AsyncClient,
+        db_session: AsyncSession,
+    ) -> None:
+        """Test refresh with expired refresh token."""
+        from datetime import timedelta
+
+        from hector.auth.jwt import create_refresh_token
+        from hector.auth.password import hash_password
+
+        # Create a test user
+        user = User(
+            email="expired_refresh@example.com",
+            hashed_password=hash_password("SecurePass123"),
+            role=UserRole.DOG_OWNER,
+            is_active=True,
+        )
+        db_session.add(user)
+        await db_session.commit()
+        await db_session.refresh(user)
+
+        # Generate expired refresh token
+        expired_token = create_refresh_token(
+            user_id=user.id,
+            email=user.email,
+            role=user.role.value,
+            expires_delta=timedelta(seconds=-10),
+        )
+
+        # Try to refresh with expired token
+        payload = {"refresh_token": expired_token}
+        response = await client.post("/auth/refresh", json=payload)
+
+        assert response.status_code == 401
+        data = response.json()
+        assert "Invalid or expired refresh token" in data["detail"]
+
+    async def test_refresh_token_inactive_user(
+        self,
+        client: AsyncClient,
+        db_session: AsyncSession,
+    ) -> None:
+        """Test refresh with inactive user account."""
+        from hector.auth.jwt import create_refresh_token
+        from hector.auth.password import hash_password
+
+        # Create an inactive user
+        user = User(
+            email="inactive_refresh@example.com",
+            hashed_password=hash_password("SecurePass123"),
+            role=UserRole.DOG_OWNER,
+            is_active=False,
+        )
+        db_session.add(user)
+        await db_session.commit()
+        await db_session.refresh(user)
+
+        # Generate refresh token for inactive user
+        refresh_token = create_refresh_token(
+            user_id=user.id,
+            email=user.email,
+            role=user.role.value,
+        )
+
+        # Try to refresh
+        payload = {"refresh_token": refresh_token}
+        response = await client.post("/auth/refresh", json=payload)
+
+        assert response.status_code == 401
+        data = response.json()
+        assert "inactive" in data["detail"].lower()
+
+    async def test_refresh_token_deleted_user(
+        self,
+        client: AsyncClient,
+    ) -> None:
+        """Test refresh with token for deleted user."""
+        from uuid import uuid4
+
+        from hector.auth.jwt import create_refresh_token
+
+        # Create token with non-existent user ID
+        fake_user_id = uuid4()
+        refresh_token = create_refresh_token(
+            user_id=fake_user_id,
+            email="deleted@example.com",
+            role="dog_owner",
+        )
+
+        # Try to refresh
+        payload = {"refresh_token": refresh_token}
+        response = await client.post("/auth/refresh", json=payload)
+
+        assert response.status_code == 401
+        data = response.json()
+        assert "User not found" in data["detail"]
+
+    async def test_refresh_token_missing_token(
+        self,
+        client: AsyncClient,
+    ) -> None:
+        """Test refresh without refresh_token field."""
+        payload = {}
+        response = await client.post("/auth/refresh", json=payload)
+
+        assert response.status_code == 422
+
+    async def test_refresh_token_empty_token(
+        self,
+        client: AsyncClient,
+    ) -> None:
+        """Test refresh with empty token."""
+        payload = {"refresh_token": ""}
+        response = await client.post("/auth/refresh", json=payload)
+
+        assert response.status_code == 422
+
+    async def test_refresh_token_malformed(
+        self,
+        client: AsyncClient,
+    ) -> None:
+        """Test refresh with malformed JWT."""
+        payload = {"refresh_token": "not.a.valid.jwt.token"}
+        response = await client.post("/auth/refresh", json=payload)
+
+        assert response.status_code == 401

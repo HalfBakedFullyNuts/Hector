@@ -1,8 +1,15 @@
 """Pydantic schemas for request/response validation."""
 
-from .auth import TokenResponse, UserLoginRequest, UserRegisterRequest, UserResponse
+from .auth import (
+    TokenRefreshRequest,
+    TokenResponse,
+    UserLoginRequest,
+    UserRegisterRequest,
+    UserResponse,
+)
 
 __all__ = [
+    "TokenRefreshRequest",
     "TokenResponse",
     "UserLoginRequest",
     "UserRegisterRequest",

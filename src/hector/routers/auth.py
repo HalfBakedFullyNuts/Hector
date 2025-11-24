@@ -6,11 +6,12 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from hector.auth.dependencies import CurrentUser
-from hector.auth.jwt import create_token_pair
+from hector.auth.jwt import create_token_pair, verify_token
 from hector.auth.password import hash_password, verify_password
 from hector.database import get_db
 from hector.models.user import User
 from hector.schemas.auth import (
+    TokenRefreshRequest,
     TokenResponse,
     UserLoginRequest,
     UserRegisterRequest,
@@ -165,3 +166,71 @@ async def get_current_user_info(
         401: Invalid or expired token
     """
     return current_user
+
+
+@router.post(
+    "/refresh",
+    response_model=TokenResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Refresh access token",
+    description="Use refresh token to obtain new access and refresh tokens",
+)
+async def refresh_token(
+    request: TokenRefreshRequest,
+    db: AsyncSession = Depends(get_db),
+) -> TokenResponse:
+    """
+    Refresh access token using a valid refresh token.
+
+    Args:
+        request: Refresh token request
+        db: Database session
+
+    Returns:
+        New access and refresh tokens
+
+    Raises:
+        401: Invalid or expired refresh token, or user not found/inactive
+        422: Invalid request data
+    """
+    # Verify and decode refresh token
+    payload = verify_token(request.refresh_token, expected_type="refresh")
+    if not payload:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired refresh token",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    # Get user from database
+    stmt = select(User).where(User.id == payload.sub)
+    result = await db.execute(stmt)
+    user = result.scalar_one_or_none()
+
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="User not found",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    # Check if user account is active
+    if not user.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="User account is inactive",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    # Generate new token pair
+    token_pair = create_token_pair(
+        user_id=user.id,
+        email=user.email,
+        role=user.role.value,
+    )
+
+    return TokenResponse(
+        access_token=token_pair.access_token,
+        refresh_token=token_pair.refresh_token,
+        token_type=token_pair.token_type,
+    )
