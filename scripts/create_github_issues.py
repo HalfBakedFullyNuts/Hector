@@ -116,20 +116,44 @@ def format_issue_body(ticket):
     """Format the GitHub issue body"""
     sections = extract_ticket_sections(ticket["body_lines"])
 
+    # Format sections with fallback text
+    user_story = (
+        chr(10).join(sections["user_story"]).strip()
+        if sections["user_story"]
+        else "See ticket description"
+    )
+    acceptance = (
+        chr(10).join(sections["acceptance_criteria"]).strip()
+        if sections["acceptance_criteria"]
+        else "See ticket description"
+    )
+    dependencies = (
+        chr(10).join(sections["dependencies"]).strip() if sections["dependencies"] else "None"
+    )
+    tech_notes = (
+        chr(10).join(sections["technical_notes"]).strip()
+        if sections["technical_notes"]
+        else "See ticket description"
+    )
+    priority_info = (
+        f"{ticket['priority']} ({get_priority_name(ticket['priority'])}) | "
+        f"{ticket['size']} ({get_size_estimate(ticket['size'])})"
+    )
+
     body = f"""## User Story
-{chr(10).join(sections['user_story']).strip() if sections['user_story'] else 'See ticket description'}
+{user_story}
 
 ## Acceptance Criteria
-{chr(10).join(sections['acceptance_criteria']).strip() if sections['acceptance_criteria'] else 'See ticket description'}
+{acceptance}
 
 ## Dependencies
-{chr(10).join(sections['dependencies']).strip() if sections['dependencies'] else 'None'}
+{dependencies}
 
 ## Technical Notes
-{chr(10).join(sections['technical_notes']).strip() if sections['technical_notes'] else 'See ticket description'}
+{tech_notes}
 
 ## Priority & Effort
-{ticket['priority']} ({get_priority_name(ticket['priority'])}) | {ticket['size']} ({get_size_estimate(ticket['size'])})
+{priority_info}
 
 ---
 *This issue was automatically created from Tickets.md*
@@ -203,7 +227,7 @@ def create_github_issue(ticket, dry_run=False):
     labels_str = ",".join(labels)
 
     if dry_run:
-        print(f"\n{'='*60}")
+        print(f"\n{'=' * 60}")
         print(f"Would create: {title}")
         print(f"Labels: {labels_str}")
         print(f"Body preview (first 200 chars):\n{body[:200]}...")

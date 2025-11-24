@@ -51,7 +51,7 @@ def get_engine(settings: Settings | None = None) -> AsyncEngine:
         use_null_pool = "test" in settings.environment.lower()
 
         # Create async engine with appropriate pool configuration
-        engine_args = {
+        engine_args: dict[str, Any] = {
             "echo": settings.db_echo,
             "pool_pre_ping": True,  # Enable connection health checks
         }
