@@ -37,5 +37,8 @@ repos:
           - sqlalchemy[asyncio]>=2.0
           - asyncpg>=0.29
           - alembic>=1.13
+          - bcrypt>=4.0
+          - python-jose[cryptography]>=3.3
+          - types-python-jose>=3.3
         args: [--config-file=pyproject.toml]
         files: ^src/
