@@ -5,10 +5,16 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from hector.auth.password import hash_password
+from hector.auth.jwt import create_token_pair
+from hector.auth.password import hash_password, verify_password
 from hector.database import get_db
 from hector.models.user import User
-from hector.schemas.auth import UserRegisterRequest, UserResponse
+from hector.schemas.auth import (
+    TokenResponse,
+    UserLoginRequest,
+    UserRegisterRequest,
+    UserResponse,
+)
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -73,3 +79,63 @@ async def register_user(
             status_code=status.HTTP_409_CONFLICT,
             detail="Email already registered",
         ) from None
+
+
+@router.post(
+    "/login",
+    response_model=TokenResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Login user",
+    description="Authenticate user and return access and refresh tokens",
+)
+async def login_user(
+    request: UserLoginRequest,
+    db: AsyncSession = Depends(get_db),
+) -> TokenResponse:
+    """
+    Authenticate user and return JWT tokens.
+
+    Args:
+        request: User login credentials
+        db: Database session
+
+    Returns:
+        Access and refresh tokens
+
+    Raises:
+        401: Invalid credentials or inactive account
+        422: Invalid request data
+    """
+    # Find user by email
+    stmt = select(User).where(User.email == request.email)
+    result = await db.execute(stmt)
+    user = result.scalar_one_or_none()
+
+    # Check if user exists and password is correct
+    if not user or not verify_password(request.password, user.hashed_password):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid email or password",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    # Check if user account is active
+    if not user.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Account is inactive",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    # Generate token pair
+    token_pair = create_token_pair(
+        user_id=user.id,
+        email=user.email,
+        role=user.role.value,
+    )
+
+    return TokenResponse(
+        access_token=token_pair.access_token,
+        refresh_token=token_pair.refresh_token,
+        token_type=token_pair.token_type,
+    )

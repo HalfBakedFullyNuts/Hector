@@ -307,3 +307,271 @@ class TestUserRegistration:
 
         # Should conflict because EmailStr normalizes
         assert response2.status_code == 409
+
+
+class TestUserLogin:
+    """Tests for POST /auth/login endpoint."""
+
+    async def test_login_success(
+        self,
+        client: AsyncClient,
+        db_session: AsyncSession,
+    ) -> None:
+        """Test successful user login."""
+        from hector.auth.password import hash_password
+
+        # Create a test user
+        user = User(
+            email="logintest@example.com",
+            hashed_password=hash_password("SecurePass123"),
+            role=UserRole.DOG_OWNER,
+            is_active=True,
+        )
+        db_session.add(user)
+        await db_session.commit()
+
+        # Attempt login
+        payload = {
+            "email": "logintest@example.com",
+            "password": "SecurePass123",
+        }
+
+        response = await client.post("/auth/login", json=payload)
+
+        assert response.status_code == 200
+        data = response.json()
+        assert "access_token" in data
+        assert "refresh_token" in data
+        assert data["token_type"] == "bearer"
+        assert len(data["access_token"]) > 0
+        assert len(data["refresh_token"]) > 0
+
+    async def test_login_invalid_email(
+        self,
+        client: AsyncClient,
+    ) -> None:
+        """Test login with non-existent email."""
+        payload = {
+            "email": "nonexistent@example.com",
+            "password": "SecurePass123",
+        }
+
+        response = await client.post("/auth/login", json=payload)
+
+        assert response.status_code == 401
+        data = response.json()
+        assert "Invalid email or password" in data["detail"]
+
+    async def test_login_wrong_password(
+        self,
+        client: AsyncClient,
+        db_session: AsyncSession,
+    ) -> None:
+        """Test login with incorrect password."""
+        from hector.auth.password import hash_password
+
+        # Create a test user
+        user = User(
+            email="wrongpw@example.com",
+            hashed_password=hash_password("CorrectPass123"),
+            role=UserRole.DOG_OWNER,
+            is_active=True,
+        )
+        db_session.add(user)
+        await db_session.commit()
+
+        # Attempt login with wrong password
+        payload = {
+            "email": "wrongpw@example.com",
+            "password": "WrongPass123",
+        }
+
+        response = await client.post("/auth/login", json=payload)
+
+        assert response.status_code == 401
+        data = response.json()
+        assert "Invalid email or password" in data["detail"]
+
+    async def test_login_inactive_account(
+        self,
+        client: AsyncClient,
+        db_session: AsyncSession,
+    ) -> None:
+        """Test login with inactive account."""
+        from hector.auth.password import hash_password
+
+        # Create an inactive user
+        user = User(
+            email="inactive@example.com",
+            hashed_password=hash_password("SecurePass123"),
+            role=UserRole.DOG_OWNER,
+            is_active=False,
+        )
+        db_session.add(user)
+        await db_session.commit()
+
+        # Attempt login
+        payload = {
+            "email": "inactive@example.com",
+            "password": "SecurePass123",
+        }
+
+        response = await client.post("/auth/login", json=payload)
+
+        assert response.status_code == 401
+        data = response.json()
+        assert "inactive" in data["detail"].lower()
+
+    async def test_login_missing_email(
+        self,
+        client: AsyncClient,
+    ) -> None:
+        """Test login without email."""
+        payload = {
+            "password": "SecurePass123",
+        }
+
+        response = await client.post("/auth/login", json=payload)
+
+        assert response.status_code == 422
+
+    async def test_login_missing_password(
+        self,
+        client: AsyncClient,
+    ) -> None:
+        """Test login without password."""
+        payload = {
+            "email": "test@example.com",
+        }
+
+        response = await client.post("/auth/login", json=payload)
+
+        assert response.status_code == 422
+
+    async def test_login_invalid_email_format(
+        self,
+        client: AsyncClient,
+    ) -> None:
+        """Test login with invalid email format."""
+        payload = {
+            "email": "not-an-email",
+            "password": "SecurePass123",
+        }
+
+        response = await client.post("/auth/login", json=payload)
+
+        assert response.status_code == 422
+
+    async def test_login_empty_password(
+        self,
+        client: AsyncClient,
+    ) -> None:
+        """Test login with empty password."""
+        payload = {
+            "email": "test@example.com",
+            "password": "",
+        }
+
+        response = await client.post("/auth/login", json=payload)
+
+        assert response.status_code == 422
+
+    async def test_login_tokens_are_valid_jwt(
+        self,
+        client: AsyncClient,
+        db_session: AsyncSession,
+    ) -> None:
+        """Test that returned tokens are valid JWT format."""
+        from hector.auth.password import hash_password
+
+        # Create a test user
+        user = User(
+            email="jwttest@example.com",
+            hashed_password=hash_password("SecurePass123"),
+            role=UserRole.CLINIC_STAFF,
+            is_active=True,
+        )
+        db_session.add(user)
+        await db_session.commit()
+
+        # Login
+        payload = {
+            "email": "jwttest@example.com",
+            "password": "SecurePass123",
+        }
+
+        response = await client.post("/auth/login", json=payload)
+
+        assert response.status_code == 200
+        data = response.json()
+
+        # JWT tokens should have 3 parts separated by dots
+        access_parts = data["access_token"].split(".")
+        refresh_parts = data["refresh_token"].split(".")
+        assert len(access_parts) == 3
+        assert len(refresh_parts) == 3
+
+    async def test_login_case_insensitive_email(
+        self,
+        client: AsyncClient,
+        db_session: AsyncSession,
+    ) -> None:
+        """Test login with different email case."""
+        from hector.auth.password import hash_password
+
+        # Create user with lowercase email
+        user = User(
+            email="casetest@example.com",
+            hashed_password=hash_password("SecurePass123"),
+            role=UserRole.DOG_OWNER,
+            is_active=True,
+        )
+        db_session.add(user)
+        await db_session.commit()
+
+        # Login with different case (EmailStr normalizes to lowercase)
+        payload = {
+            "email": "CaseTest@Example.com",
+            "password": "SecurePass123",
+        }
+
+        response = await client.post("/auth/login", json=payload)
+
+        assert response.status_code == 200
+        data = response.json()
+        assert "access_token" in data
+
+    async def test_login_different_roles(
+        self,
+        client: AsyncClient,
+        db_session: AsyncSession,
+    ) -> None:
+        """Test login works for all user roles."""
+        from hector.auth.password import hash_password
+
+        roles = [UserRole.DOG_OWNER, UserRole.CLINIC_STAFF, UserRole.ADMIN]
+
+        for idx, role in enumerate(roles):
+            user = User(
+                email=f"role{idx}@example.com",
+                hashed_password=hash_password("SecurePass123"),
+                role=role,
+                is_active=True,
+            )
+            db_session.add(user)
+
+        await db_session.commit()
+
+        # Test login for each role
+        for idx in range(len(roles)):
+            payload = {
+                "email": f"role{idx}@example.com",
+                "password": "SecurePass123",
+            }
+
+            response = await client.post("/auth/login", json=payload)
+
+            assert response.status_code == 200
+            data = response.json()
+            assert "access_token" in data
+            assert "refresh_token" in data

@@ -51,6 +51,32 @@ class UserRegisterRequest(BaseModel):
         return value
 
 
+class UserLoginRequest(BaseModel):
+    """Request schema for user login."""
+
+    email: EmailStr = Field(
+        ...,
+        description="User's email address",
+        examples=["user@example.com"],
+    )
+
+    password: str = Field(
+        ...,
+        min_length=1,
+        max_length=72,  # bcrypt limit
+        description="User's password",
+        examples=["SecurePass123"],
+    )
+
+
+class TokenResponse(BaseModel):
+    """Response schema for authentication tokens."""
+
+    access_token: str = Field(..., description="JWT access token")
+    refresh_token: str = Field(..., description="JWT refresh token")
+    token_type: str = Field(default="bearer", description="Token type")
+
+
 class UserResponse(BaseModel):
     """Response schema for user data (excludes sensitive fields)."""
 
