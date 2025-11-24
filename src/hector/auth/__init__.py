@@ -7,7 +7,15 @@ This module provides:
 - Role-based authorization
 """
 
-from .dependencies import CurrentUser, get_current_user
+from .dependencies import (
+    CurrentUser,
+    RequireAdmin,
+    RequireClinicStaff,
+    RequireDogOwner,
+    RoleChecker,
+    get_current_user,
+    require_role,
+)
 from .jwt import (
     TokenPair,
     TokenPayload,
@@ -32,4 +40,9 @@ __all__ = [
     "TokenPair",
     "get_current_user",
     "CurrentUser",
+    "RoleChecker",
+    "require_role",
+    "RequireAdmin",
+    "RequireClinicStaff",
+    "RequireDogOwner",
 ]
