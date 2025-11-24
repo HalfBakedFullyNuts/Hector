@@ -575,3 +575,269 @@ class TestUserLogin:
             data = response.json()
             assert "access_token" in data
             assert "refresh_token" in data
+
+
+class TestGetCurrentUser:
+    """Tests for GET /auth/me endpoint."""
+
+    async def test_get_current_user_success(
+        self,
+        client: AsyncClient,
+        db_session: AsyncSession,
+    ) -> None:
+        """Test getting current user with valid token."""
+        from hector.auth.jwt import create_access_token
+        from hector.auth.password import hash_password
+
+        # Create a test user
+        user = User(
+            email="metest@example.com",
+            hashed_password=hash_password("SecurePass123"),
+            role=UserRole.DOG_OWNER,
+            is_active=True,
+        )
+        db_session.add(user)
+        await db_session.commit()
+        await db_session.refresh(user)
+
+        # Generate access token
+        token = create_access_token(
+            user_id=user.id,
+            email=user.email,
+            role=user.role.value,
+        )
+
+        # Make request with token
+        response = await client.get(
+            "/auth/me",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["email"] == "metest@example.com"
+        assert data["role"] == "dog_owner"
+        assert data["is_active"] is True
+        assert "id" in data
+        assert "password" not in data
+        assert "hashed_password" not in data
+
+    async def test_get_current_user_missing_token(
+        self,
+        client: AsyncClient,
+    ) -> None:
+        """Test GET /me without authentication token."""
+        response = await client.get("/auth/me")
+
+        assert response.status_code == 403
+
+    async def test_get_current_user_invalid_token(
+        self,
+        client: AsyncClient,
+    ) -> None:
+        """Test GET /me with invalid token."""
+        response = await client.get(
+            "/auth/me",
+            headers={"Authorization": "Bearer invalid_token_here"},
+        )
+
+        assert response.status_code == 401
+        data = response.json()
+        assert "Invalid or expired token" in data["detail"]
+
+    async def test_get_current_user_malformed_token(
+        self,
+        client: AsyncClient,
+    ) -> None:
+        """Test GET /me with malformed token."""
+        response = await client.get(
+            "/auth/me",
+            headers={"Authorization": "Bearer not.a.jwt"},
+        )
+
+        assert response.status_code == 401
+
+    async def test_get_current_user_expired_token(
+        self,
+        client: AsyncClient,
+        db_session: AsyncSession,
+    ) -> None:
+        """Test GET /me with expired token."""
+        from datetime import timedelta
+
+        from hector.auth.jwt import create_access_token
+        from hector.auth.password import hash_password
+
+        # Create a test user
+        user = User(
+            email="expired@example.com",
+            hashed_password=hash_password("SecurePass123"),
+            role=UserRole.DOG_OWNER,
+            is_active=True,
+        )
+        db_session.add(user)
+        await db_session.commit()
+        await db_session.refresh(user)
+
+        # Generate expired token (negative expiry)
+        token = create_access_token(
+            user_id=user.id,
+            email=user.email,
+            role=user.role.value,
+            expires_delta=timedelta(seconds=-10),
+        )
+
+        # Make request with expired token
+        response = await client.get(
+            "/auth/me",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+
+        assert response.status_code == 401
+        data = response.json()
+        assert "Invalid or expired token" in data["detail"]
+
+    async def test_get_current_user_inactive_account(
+        self,
+        client: AsyncClient,
+        db_session: AsyncSession,
+    ) -> None:
+        """Test GET /me with inactive user account."""
+        from hector.auth.jwt import create_access_token
+        from hector.auth.password import hash_password
+
+        # Create an inactive user
+        user = User(
+            email="inactive_me@example.com",
+            hashed_password=hash_password("SecurePass123"),
+            role=UserRole.DOG_OWNER,
+            is_active=False,
+        )
+        db_session.add(user)
+        await db_session.commit()
+        await db_session.refresh(user)
+
+        # Generate token for inactive user
+        token = create_access_token(
+            user_id=user.id,
+            email=user.email,
+            role=user.role.value,
+        )
+
+        # Make request with token
+        response = await client.get(
+            "/auth/me",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+
+        assert response.status_code == 401
+        data = response.json()
+        assert "inactive" in data["detail"].lower()
+
+    async def test_get_current_user_deleted_user(
+        self,
+        client: AsyncClient,
+        db_session: AsyncSession,
+    ) -> None:
+        """Test GET /me with token for deleted user."""
+        from uuid import uuid4
+
+        from hector.auth.jwt import create_access_token
+
+        # Create a fake user ID (user doesn't exist)
+        fake_user_id = uuid4()
+
+        # Generate token with non-existent user ID
+        token = create_access_token(
+            user_id=fake_user_id,
+            email="deleted@example.com",
+            role="dog_owner",
+        )
+
+        # Make request with token
+        response = await client.get(
+            "/auth/me",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+
+        assert response.status_code == 401
+        data = response.json()
+        assert "User not found" in data["detail"]
+
+    async def test_get_current_user_wrong_token_type(
+        self,
+        client: AsyncClient,
+        db_session: AsyncSession,
+    ) -> None:
+        """Test GET /me with refresh token instead of access token."""
+        from hector.auth.jwt import create_refresh_token
+        from hector.auth.password import hash_password
+
+        # Create a test user
+        user = User(
+            email="wrongtype@example.com",
+            hashed_password=hash_password("SecurePass123"),
+            role=UserRole.DOG_OWNER,
+            is_active=True,
+        )
+        db_session.add(user)
+        await db_session.commit()
+        await db_session.refresh(user)
+
+        # Generate refresh token (wrong type for /me endpoint)
+        token = create_refresh_token(
+            user_id=user.id,
+            email=user.email,
+            role=user.role.value,
+        )
+
+        # Make request with wrong token type
+        response = await client.get(
+            "/auth/me",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+
+        assert response.status_code == 401
+        data = response.json()
+        assert "Invalid or expired token" in data["detail"]
+
+    async def test_get_current_user_different_roles(
+        self,
+        client: AsyncClient,
+        db_session: AsyncSession,
+    ) -> None:
+        """Test GET /me works for all user roles."""
+        from hector.auth.jwt import create_access_token
+        from hector.auth.password import hash_password
+
+        roles = [UserRole.DOG_OWNER, UserRole.CLINIC_STAFF, UserRole.ADMIN]
+
+        for idx, role in enumerate(roles):
+            user = User(
+                email=f"merole{idx}@example.com",
+                hashed_password=hash_password("SecurePass123"),
+                role=role,
+                is_active=True,
+            )
+            db_session.add(user)
+
+        await db_session.commit()
+
+        # Test /me for each role
+        users = await db_session.execute(select(User))
+        for user in users.scalars():
+            token = create_access_token(
+                user_id=user.id,
+                email=user.email,
+                role=user.role.value,
+            )
+
+            response = await client.get(
+                "/auth/me",
+                headers={"Authorization": f"Bearer {token}"},
+            )
+
+            assert response.status_code == 200
+            data = response.json()
+            assert data["email"] == user.email
+            assert data["role"] == user.role.value

@@ -5,6 +5,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from hector.auth.dependencies import CurrentUser
 from hector.auth.jwt import create_token_pair
 from hector.auth.password import hash_password, verify_password
 from hector.database import get_db
@@ -139,3 +140,28 @@ async def login_user(
         refresh_token=token_pair.refresh_token,
         token_type=token_pair.token_type,
     )
+
+
+@router.get(
+    "/me",
+    response_model=UserResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Get current user",
+    description="Retrieve the currently authenticated user's information",
+)
+async def get_current_user_info(
+    current_user: CurrentUser,
+) -> User:
+    """
+    Get current authenticated user information.
+
+    Args:
+        current_user: Current user from JWT token (dependency)
+
+    Returns:
+        Current user data (excluding password)
+
+    Raises:
+        401: Invalid or expired token
+    """
+    return current_user

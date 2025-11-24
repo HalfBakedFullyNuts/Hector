@@ -7,6 +7,7 @@ This module provides:
 - Role-based authorization
 """
 
+from .dependencies import CurrentUser, get_current_user
 from .jwt import (
     TokenPair,
     TokenPayload,
@@ -29,4 +30,6 @@ __all__ = [
     "decode_token_unsafe",
     "TokenPayload",
     "TokenPair",
+    "get_current_user",
+    "CurrentUser",
 ]
