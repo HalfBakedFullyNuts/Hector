@@ -5,9 +5,8 @@ from typing import Any
 from fastapi import APIRouter, Depends
 
 from .. import get_version
-from ..config import Settings, get_settings, settings_asdict
+from ..config import Settings, get_settings
 from ..middleware import get_request_id
-
 
 router = APIRouter(prefix="/health", tags=["health"])
 

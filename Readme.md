@@ -92,23 +92,125 @@ Der Service lauscht standardmaessig auf Port `8000` und stellt `GET /health` ber
 1. `.env.example` nach `.env` kopieren.
 2. Pflichtwerte setzen:
    - `HECTOR_ENVIRONMENT` (z. B. `development`, `staging`, `production`).
+   - `HECTOR_DATABASE_URL` (PostgreSQL-Verbindungsstring, z. B. `postgresql+asyncpg://user:password@localhost:5432/hector`).
 3. Optionale Werte anpassen:
    - `HECTOR_PORT` fuer den HTTP-Port (Standard `8000`).
    - `HECTOR_LOG_LEVEL` (`DEBUG`, `INFO`, `WARNING`, `ERROR`, `CRITICAL`).
+   - `HECTOR_DB_POOL_SIZE` (Standard `5`).
+   - `HECTOR_DB_MAX_OVERFLOW` (Standard `10`).
+   - `HECTOR_DB_ECHO` (Standard `false`).
 
 Beim Start prueft der Service Pflichtwerte und bricht mit einer aussagekraeftigen Meldung ab, falls sie fehlen oder ungueltig sind.
+
+## Datenbank-Setup und Migrationen
+
+Das Projekt verwendet PostgreSQL mit SQLAlchemy (async) und Alembic fuer Datenbankmigrationen.
+
+### PostgreSQL lokal aufsetzen
+
+```bash
+# Docker-Methode (empfohlen fuer Entwicklung)
+docker run --name hector-postgres \
+  -e POSTGRES_USER=hector \
+  -e POSTGRES_PASSWORD=hector \
+  -e POSTGRES_DB=hector \
+  -p 5432:5432 \
+  -d postgres:16-alpine
+
+# Oder via apt/brew/etc. installieren
+```
+
+### Migrationen ausfuehren
+
+```bash
+# Virtual Environment aktivieren
+source .venv/bin/activate
+
+# Datenbank auf aktuellen Stand bringen
+alembic upgrade head
+
+# Migration-Historie anzeigen
+alembic history
+
+# Aktuelle Version anzeigen
+alembic current
+
+# Neue Migration erstellen (nach Modellaenderungen)
+alembic revision --autogenerate -m "Beschreibung der Aenderung"
+
+# Migration rueckgaengig machen
+alembic downgrade -1
+```
+
+### Datenmodelle
+
+Das Projekt definiert folgende Hauptmodelle:
+
+- **User** (T-103): Benutzer mit Rollen (Klinikpersonal, Hundebesitzer, Admin)
+- **Clinic** (T-104): Tierkliniken mit Standort und Kontaktinformationen
+- **DogProfile** (T-105): Hundeprofile mit Bluttyp und Eligibilitaetspruefung
+- **BloodDonationRequest** (T-106): Blutspendeanfragen mit Dringlichkeit und Status
+- **DonationResponse** (T-107): Antworten von Hundebesitzern auf Anfragen
+
+Alle Modelle befinden sich in `src/hector/models/` und nutzen:
+- UUID Primary Keys
+- Automatische Timestamps (created_at, updated_at)
+- Async SQLAlchemy 2.0+ API
+- PostgreSQL-spezifische Enums
 
 ## Qualitaetssicherung (T-012)
 
 ```bash
-uv run lint        # Ruff lint
-uv run format      # Ruff format (in-place)
-uv run format:check
-uv run typecheck   # MyPy
-uv run test        # Pytest
+# Innerhalb der venv oder mit aktiviertem Python 3.12
+ruff check .           # Ruff lint
+ruff format .          # Ruff format (in-place)
+ruff format --check .  # Format check
+mypy src               # MyPy type check
+pytest                 # Run tests
+pip-audit              # Security audit
 ```
 
 Die CI-Pipeline (`.github/workflows/ci.yml`) fuehrt dieselben Pruefungen aus und blockiert fehlerhafte Pull Requests.
+
+### Pre-commit Hooks (T-013)
+
+Das Projekt unterstuetzt Pre-commit Hooks fuer automatische Qualitaetschecks vor Commits:
+
+```bash
+# Pre-commit installieren (falls noch nicht geschehen)
+source .venv/bin/activate
+pip install pre-commit
+
+# Hooks aktivieren
+pre-commit install
+
+# Manuell auf allen Dateien ausfuehren
+pre-commit run --all-files
+```
+
+Die Hooks fuehren automatisch folgende Checks aus:
+- Trailing Whitespace entfernen
+- End-of-file fixer
+- YAML/TOML Syntax-Check
+- Ruff Linting und Formatierung
+- MyPy Type-Checking
+
+## Sicherheit (T-031)
+
+### Dependency Scanning
+
+Das Projekt nutzt `pip-audit` zur Pruefung auf bekannte Schwachstellen in Abhaengigkeiten:
+
+```bash
+source .venv/bin/activate
+pip-audit
+```
+
+Security Audits laufen automatisch in der CI-Pipeline.
+
+### Meldung von Sicherheitsluecken
+
+Siehe `SECURITY.md` fuer Details zur verantwortungsvollen Offenlegung von Sicherheitsproblemen.
 
 ## Projektstruktur
 

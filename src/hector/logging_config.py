@@ -3,7 +3,6 @@
 import logging
 from typing import Final
 
-
 LOG_FORMAT: Final[str] = "%(asctime)s | %(levelname)s | %(name)s | %(message)s"
 
 
