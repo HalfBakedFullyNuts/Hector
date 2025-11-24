@@ -1,0 +1,309 @@
+"""Tests for authentication endpoints."""
+
+from collections.abc import AsyncGenerator
+
+import pytest
+from httpx import ASGITransport, AsyncClient
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from hector.app import create_app
+from hector.config import Settings
+from hector.database import get_db
+from hector.models.user import User, UserRole
+
+
+@pytest.fixture
+async def client(db_session: AsyncSession) -> AsyncGenerator[AsyncClient, None]:
+    """Create test client with database session."""
+    settings = Settings()
+    app = create_app(settings)
+
+    # Override database dependency
+    async def override_get_db() -> AsyncGenerator[AsyncSession, None]:
+        yield db_session
+
+    app.dependency_overrides[get_db] = override_get_db
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as ac:
+        yield ac
+
+    # Clean up override
+    app.dependency_overrides.clear()
+
+
+class TestUserRegistration:
+    """Tests for POST /auth/register endpoint."""
+
+    async def test_register_user_success(
+        self,
+        client: AsyncClient,
+        db_session: AsyncSession,
+    ) -> None:
+        """Test successful user registration."""
+        payload = {
+            "email": "newuser@example.com",
+            "password": "SecurePass123",
+            "role": "dog_owner",
+        }
+
+        response = await client.post("/auth/register", json=payload)
+
+        assert response.status_code == 201
+        data = response.json()
+        assert data["email"] == "newuser@example.com"
+        assert data["role"] == "dog_owner"
+        assert data["is_active"] is True
+        assert data["is_verified"] is False
+        assert "id" in data
+        assert "created_at" in data
+        assert "updated_at" in data
+        assert "password" not in data
+        assert "hashed_password" not in data
+
+        # Verify user in database
+        stmt = select(User).where(User.email == "newuser@example.com")
+        result = await db_session.execute(stmt)
+        user = result.scalar_one_or_none()
+        assert user is not None
+        assert user.email == "newuser@example.com"
+        assert user.hashed_password.startswith("$2b$")
+
+    async def test_register_clinic_staff_role(
+        self,
+        client: AsyncClient,
+        db_session: AsyncSession,
+    ) -> None:
+        """Test registration with clinic_staff role."""
+        payload = {
+            "email": "clinic@example.com",
+            "password": "SecurePass123",
+            "role": "clinic_staff",
+        }
+
+        response = await client.post("/auth/register", json=payload)
+
+        assert response.status_code == 201
+        data = response.json()
+        assert data["role"] == "clinic_staff"
+
+    async def test_register_duplicate_email_returns_409(
+        self,
+        client: AsyncClient,
+        db_session: AsyncSession,
+    ) -> None:
+        """Test that duplicate email returns 409 Conflict."""
+        # Create first user
+        user = User(
+            email="existing@example.com",
+            hashed_password="$2b$12$hashedpassword",
+            role=UserRole.DOG_OWNER,
+        )
+        db_session.add(user)
+        await db_session.commit()
+
+        # Try to register with same email
+        payload = {
+            "email": "existing@example.com",
+            "password": "SecurePass123",
+            "role": "dog_owner",
+        }
+
+        response = await client.post("/auth/register", json=payload)
+
+        assert response.status_code == 409
+        data = response.json()
+        assert "already registered" in data["detail"].lower()
+
+    async def test_register_password_too_short_returns_422(
+        self,
+        client: AsyncClient,
+    ) -> None:
+        """Test that short password returns 422."""
+        payload = {
+            "email": "user@example.com",
+            "password": "Short1",  # Only 6 characters
+            "role": "dog_owner",
+        }
+
+        response = await client.post("/auth/register", json=payload)
+
+        assert response.status_code == 422
+        data = response.json()
+        assert "detail" in data
+
+    async def test_register_password_missing_uppercase_returns_422(
+        self,
+        client: AsyncClient,
+    ) -> None:
+        """Test that password without uppercase returns 422."""
+        payload = {
+            "email": "user@example.com",
+            "password": "securepass123",  # No uppercase
+            "role": "dog_owner",
+        }
+
+        response = await client.post("/auth/register", json=payload)
+
+        assert response.status_code == 422
+        data = response.json()
+        assert "uppercase" in str(data).lower()
+
+    async def test_register_password_missing_lowercase_returns_422(
+        self,
+        client: AsyncClient,
+    ) -> None:
+        """Test that password without lowercase returns 422."""
+        payload = {
+            "email": "user@example.com",
+            "password": "SECUREPASS123",  # No lowercase
+            "role": "dog_owner",
+        }
+
+        response = await client.post("/auth/register", json=payload)
+
+        assert response.status_code == 422
+        data = response.json()
+        assert "lowercase" in str(data).lower()
+
+    async def test_register_password_missing_digit_returns_422(
+        self,
+        client: AsyncClient,
+    ) -> None:
+        """Test that password without digit returns 422."""
+        payload = {
+            "email": "user@example.com",
+            "password": "SecurePassword",  # No digit
+            "role": "dog_owner",
+        }
+
+        response = await client.post("/auth/register", json=payload)
+
+        assert response.status_code == 422
+        data = response.json()
+        assert "digit" in str(data).lower()
+
+    async def test_register_invalid_email_returns_422(
+        self,
+        client: AsyncClient,
+    ) -> None:
+        """Test that invalid email returns 422."""
+        payload = {
+            "email": "not-an-email",
+            "password": "SecurePass123",
+            "role": "dog_owner",
+        }
+
+        response = await client.post("/auth/register", json=payload)
+
+        assert response.status_code == 422
+
+    async def test_register_invalid_role_returns_422(
+        self,
+        client: AsyncClient,
+    ) -> None:
+        """Test that invalid role returns 422."""
+        payload = {
+            "email": "user@example.com",
+            "password": "SecurePass123",
+            "role": "invalid_role",
+        }
+
+        response = await client.post("/auth/register", json=payload)
+
+        assert response.status_code == 422
+
+    async def test_register_missing_email_returns_422(
+        self,
+        client: AsyncClient,
+    ) -> None:
+        """Test that missing email returns 422."""
+        payload = {
+            "password": "SecurePass123",
+            "role": "dog_owner",
+        }
+
+        response = await client.post("/auth/register", json=payload)
+
+        assert response.status_code == 422
+
+    async def test_register_missing_password_returns_422(
+        self,
+        client: AsyncClient,
+    ) -> None:
+        """Test that missing password returns 422."""
+        payload = {
+            "email": "user@example.com",
+            "role": "dog_owner",
+        }
+
+        response = await client.post("/auth/register", json=payload)
+
+        assert response.status_code == 422
+
+    async def test_register_missing_role_returns_422(
+        self,
+        client: AsyncClient,
+    ) -> None:
+        """Test that missing role returns 422."""
+        payload = {
+            "email": "user@example.com",
+            "password": "SecurePass123",
+        }
+
+        response = await client.post("/auth/register", json=payload)
+
+        assert response.status_code == 422
+
+    async def test_register_password_hashing(
+        self,
+        client: AsyncClient,
+        db_session: AsyncSession,
+    ) -> None:
+        """Test that passwords are properly hashed."""
+        payload = {
+            "email": "hashing@example.com",
+            "password": "SecurePass123",
+            "role": "dog_owner",
+        }
+
+        response = await client.post("/auth/register", json=payload)
+        assert response.status_code == 201
+
+        # Check database
+        stmt = select(User).where(User.email == "hashing@example.com")
+        result = await db_session.execute(stmt)
+        user = result.scalar_one()
+
+        # Password should be bcrypt hashed
+        assert user.hashed_password != "SecurePass123"
+        assert user.hashed_password.startswith("$2b$")
+        assert len(user.hashed_password) > 50
+
+    async def test_register_case_sensitive_email(
+        self,
+        client: AsyncClient,
+        db_session: AsyncSession,
+    ) -> None:
+        """Test email case sensitivity handling."""
+        # Register user with lowercase email
+        payload1 = {
+            "email": "test@example.com",
+            "password": "SecurePass123",
+            "role": "dog_owner",
+        }
+        response1 = await client.post("/auth/register", json=payload1)
+        assert response1.status_code == 201
+
+        # Try to register with different case
+        # Note: EmailStr normalizes to lowercase, so this should conflict
+        payload2 = {
+            "email": "Test@Example.com",
+            "password": "SecurePass123",
+            "role": "dog_owner",
+        }
+        response2 = await client.post("/auth/register", json=payload2)
+
+        # Should conflict because EmailStr normalizes
+        assert response2.status_code == 409
