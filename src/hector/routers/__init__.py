@@ -2,7 +2,7 @@
 
 from fastapi import APIRouter
 
-from . import auth, clinics, dogs, health
+from . import auth, clinics, dogs, donation_requests, health
 
 
 def get_router() -> APIRouter:
@@ -13,6 +13,7 @@ def get_router() -> APIRouter:
     router.include_router(auth.router)
     router.include_router(dogs.router)
     router.include_router(clinics.router)
+    router.include_router(donation_requests.router)
     return router
 
 
