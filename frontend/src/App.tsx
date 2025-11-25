@@ -9,6 +9,7 @@ import { ProtectedRoute } from './components/common/ProtectedRoute';
 import { LoginPage } from './pages/auth/LoginPage';
 import { RegisterPage } from './pages/auth/RegisterPage';
 import { DonorDashboard } from './pages/donor/DonorDashboard';
+import { DogProfileForm } from './pages/donor/DogProfileForm';
 import { UserRole } from './types/auth';
 
 function App() {
@@ -26,6 +27,22 @@ function App() {
             element={
               <ProtectedRoute allowedRoles={[UserRole.DOG_OWNER]}>
                 <DonorDashboard />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/owner/dogs/new"
+            element={
+              <ProtectedRoute allowedRoles={[UserRole.DOG_OWNER]}>
+                <DogProfileForm />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/owner/dogs/:dogId"
+            element={
+              <ProtectedRoute allowedRoles={[UserRole.DOG_OWNER]}>
+                <DogProfileForm />
               </ProtectedRoute>
             }
           />
