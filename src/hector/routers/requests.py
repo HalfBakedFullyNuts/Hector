@@ -1,25 +1,31 @@
-"""Blood donation request endpoints for browsing and listing."""
+"""Blood donation request endpoints for browsing and responding."""
 
 import logging
 from typing import Annotated
+from uuid import UUID
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
 from sqlalchemy import case, func, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from ..database import get_db
-from ..models import BloodDonationRequest, Clinic
+from ..models import BloodDonationRequest, Clinic, DogProfile
 from ..models.dog_profile import BloodType
 from ..models.donation_request import RequestStatus, RequestUrgency
-from ..models.donation_response import DonationResponse
+from ..models.donation_response import DonationResponse, ResponseStatus
 from ..schemas import (
     BloodTypeEnum,
     ClinicSummary,
     DonationRequestBrowseResponse,
+    DonationResponseCreate,
+    DonationResponseOut,
+    EligibilityCheck,
     PaginatedDonationRequests,
     RequestStatusEnum,
     RequestUrgencyEnum,
+    ResponseStatusEnum,
 )
 
 LOG = logging.getLogger(__name__)
@@ -174,6 +180,148 @@ async def browse_requests(
     )
 
 
+def _check_dog_eligibility(dog: DogProfile) -> EligibilityCheck:
+    """
+    Check if a dog is eligible for blood donation.
+
+    Eligibility requirements:
+    - Dog profile must be active
+    - Weight >= 25kg
+    - Age between 1-8 years
+    - Last donation > 8 weeks ago (if applicable)
+    """
+    reasons: list[str] = []
+
+    if not dog.is_active:
+        reasons.append("Dog profile is not active")
+
+    if dog.weight_kg < 25:
+        reasons.append(f"Dog weight ({dog.weight_kg}kg) is below minimum 25kg")
+
+    age = dog.age_years
+    if age < 1:
+        reasons.append(f"Dog is too young ({age} years, minimum 1 year)")
+    elif age > 8:
+        reasons.append(f"Dog is too old ({age} years, maximum 8 years)")
+
+    if dog.last_donation_date:
+        from datetime import datetime
+
+        weeks_since = (datetime.now().date() - dog.last_donation_date).days // 7
+        if weeks_since < 8:
+            reasons.append(f"Last donation was {weeks_since} weeks ago (minimum 8 weeks required)")
+
+    return EligibilityCheck(is_eligible=len(reasons) == 0, reasons=reasons)
+
+
+@router.post(
+    "/{request_id}/respond",
+    summary="Respond to a donation request",
+    response_model=DonationResponseOut,
+    status_code=status.HTTP_201_CREATED,
+)
+async def respond_to_request(
+    request_id: UUID,
+    response_data: DonationResponseCreate,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    # TODO: Replace with proper auth dependency when T-204 is implemented
+    x_user_id: Annotated[UUID, Header(description="User ID (temp auth header)")],
+) -> DonationResponseOut:
+    """
+    Respond to a blood donation request.
+
+    Dog owners can accept or decline donation requests with their dogs.
+
+    Validations:
+    - Request must be OPEN
+    - Dog must belong to the authenticated user
+    - Dog must be eligible for donation (weight, age, last donation date)
+    - Cannot respond twice with the same dog to the same request
+    """
+    # Verify request exists and is open
+    request_query = select(BloodDonationRequest).where(BloodDonationRequest.id == request_id)
+    request_result = await db.execute(request_query)
+    donation_request = request_result.scalar_one_or_none()
+
+    if donation_request is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Donation request not found"
+        )
+
+    if donation_request.status != RequestStatus.OPEN:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Cannot respond to request with status {donation_request.status.value}",
+        )
+
+    # Verify dog exists and belongs to user
+    dog_query = select(DogProfile).where(DogProfile.id == response_data.dog_id)
+    dog_result = await db.execute(dog_query)
+    dog = dog_result.scalar_one_or_none()
+
+    if dog is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Dog profile not found")
+
+    if dog.owner_id != x_user_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You can only respond with your own dogs",
+        )
+
+    # Check dog eligibility (only for ACCEPTED responses)
+    if response_data.status == ResponseStatusEnum.ACCEPTED:
+        eligibility = _check_dog_eligibility(dog)
+        if not eligibility.is_eligible:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail={
+                    "message": "Dog is not eligible for donation",
+                    "reasons": eligibility.reasons,
+                },
+            )
+
+    # Create the response
+    donation_response = DonationResponse(
+        request_id=request_id,
+        dog_id=response_data.dog_id,
+        owner_id=x_user_id,
+        status=ResponseStatus(response_data.status.value),
+        response_message=response_data.response_message,
+    )
+
+    db.add(donation_response)
+
+    try:
+        await db.flush()
+    except IntegrityError:
+        await db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="You have already responded to this request with this dog",
+        )
+
+    LOG.info(
+        "Donation response created",
+        extra={
+            "response_id": str(donation_response.id),
+            "request_id": str(request_id),
+            "dog_id": str(response_data.dog_id),
+            "status": response_data.status.value,
+        },
+    )
+
+    return DonationResponseOut(
+        id=donation_response.id,
+        request_id=donation_response.request_id,
+        dog_id=donation_response.dog_id,
+        owner_id=donation_response.owner_id,
+        status=ResponseStatusEnum(donation_response.status.value),
+        response_message=donation_response.response_message,
+        created_at=donation_response.created_at,
+        updated_at=donation_response.updated_at,
+    )
+
+
 @router.get(
     "/{request_id}",
     summary="Get a single donation request",
@@ -188,8 +336,6 @@ async def get_request(
 
     Public endpoint for transparency - anyone can view request details.
     """
-    from fastapi import HTTPException
-
     # Query request with clinic
     query = (
         select(BloodDonationRequest)
@@ -200,7 +346,7 @@ async def get_request(
     req = result.scalar_one_or_none()
 
     if req is None:
-        raise HTTPException(status_code=404, detail="Request not found")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Request not found")
 
     # Get response count
     count_query = select(func.count(DonationResponse.id)).where(
