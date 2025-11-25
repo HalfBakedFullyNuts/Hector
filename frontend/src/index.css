@@ -1,0 +1,64 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Import Inter font from Google Fonts */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+
+@layer base {
+  body {
+    @apply font-sans text-text-dark bg-base-white antialiased;
+    margin: 0;
+    min-height: 100vh;
+  }
+
+  h1 {
+    @apply text-3xl md:text-4xl font-bold text-text-dark;
+  }
+
+  h2 {
+    @apply text-2xl md:text-3xl font-semibold text-text-dark;
+  }
+
+  h3 {
+    @apply text-xl md:text-2xl font-medium text-text-dark;
+  }
+}
+
+@layer components {
+  /* Primary Button */
+  .btn-primary {
+    @apply bg-primary-blue text-white px-6 py-2.5 rounded-button font-medium
+           hover:bg-primary-blue-dark transition-colors duration-200
+           focus:outline-none focus:ring-2 focus:ring-primary-blue focus:ring-offset-2
+           disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+
+  /* Secondary Button */
+  .btn-secondary {
+    @apply bg-white text-primary-blue border border-primary-blue px-6 py-2.5
+           rounded-button font-medium hover:bg-primary-blue hover:text-white
+           transition-colors duration-200
+           focus:outline-none focus:ring-2 focus:ring-primary-blue focus:ring-offset-2
+           disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+
+  /* Input Field */
+  .input {
+    @apply w-full px-4 py-2.5 border border-border-light rounded-input
+           text-text-dark placeholder:text-text-placeholder
+           focus:outline-none focus:ring-2 focus:ring-primary-blue focus:border-primary-blue
+           transition-all duration-200
+           disabled:bg-gray-50 disabled:cursor-not-allowed;
+  }
+
+  /* Card */
+  .card {
+    @apply bg-white rounded-card shadow-card p-6;
+  }
+
+  /* Section Title */
+  .section-title {
+    @apply text-2xl font-semibold text-text-dark mb-4;
+  }
+}

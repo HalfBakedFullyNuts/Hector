@@ -3,6 +3,7 @@
 import logging
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
 from . import get_version
 from .config import Settings, get_settings, settings_asdict
@@ -20,9 +21,18 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     setup_logging(settings.log_level)
 
     app = FastAPI(
-        title="Hector Service",
-        description="Bootstrap service skeleton using FastAPI",
+        title="Hector Blood Donation Platform",
+        description="API for connecting vet clinics with dog blood donors",
         version=get_version(),
+    )
+
+    # Configure CORS
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=settings.cors_allowed_origins,
+        allow_credentials=settings.cors_allow_credentials,
+        allow_methods=settings.cors_allowed_methods,
+        allow_headers=settings.cors_allowed_headers,
     )
 
     for middleware, kwargs in middleware_stack():

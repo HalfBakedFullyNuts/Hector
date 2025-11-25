@@ -64,6 +64,24 @@ class Settings(BaseSettings):
         description="Refresh token expiration time in days",
     )
 
+    # CORS settings
+    cors_allowed_origins: list[str] = Field(
+        default_factory=lambda: ["http://localhost:3000"],
+        description="Allowed origins for CORS requests (comma-separated in env)",
+    )
+    cors_allow_credentials: bool = Field(
+        True,
+        description="Allow credentials (cookies, authorization headers) in CORS requests",
+    )
+    cors_allowed_methods: list[str] = Field(
+        default_factory=lambda: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
+        description="Allowed HTTP methods for CORS requests",
+    )
+    cors_allowed_headers: list[str] = Field(
+        default_factory=lambda: ["*"],
+        description="Allowed headers for CORS requests",
+    )
+
 
 @lru_cache(maxsize=1)
 def get_settings() -> Settings:
