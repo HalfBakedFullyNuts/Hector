@@ -1,11 +1,15 @@
 """User model for authentication and authorization."""
 
 import enum
+from typing import TYPE_CHECKING
 
 from sqlalchemy import Boolean, String
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .base import BaseModel
+
+if TYPE_CHECKING:
+    from .clinic import Clinic
 
 
 class UserRole(str, enum.Enum):
@@ -62,6 +66,13 @@ class User(BaseModel):
     # Relationships
     # dog_profiles: Relationship to DogProfile (one-to-many)
     # Will be defined in DogProfile model
+
+    clinics: Mapped[list["Clinic"]] = relationship(
+        "Clinic",
+        secondary="clinic_staff",
+        back_populates="staff",
+        doc="Clinics where this user is staff",
+    )
 
     def __repr__(self) -> str:
         """Return string representation of the user."""
