@@ -18,10 +18,13 @@ from ..models.donation_response import DonationResponse, ResponseStatus
 from ..schemas import (
     BloodTypeEnum,
     ClinicSummary,
+    DogSummary,
     DonationRequestBrowseResponse,
     DonationResponseCreate,
+    DonationResponseDetail,
     DonationResponseOut,
     EligibilityCheck,
+    OwnerSummary,
     PaginatedDonationRequests,
     RequestStatusEnum,
     RequestUrgencyEnum,
@@ -320,6 +323,97 @@ async def respond_to_request(
         created_at=donation_response.created_at,
         updated_at=donation_response.updated_at,
     )
+
+
+@router.get(
+    "/{request_id}/responses",
+    summary="List responses to a donation request",
+    response_model=list[DonationResponseDetail],
+)
+async def list_request_responses(
+    request_id: UUID,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    # TODO: Replace with proper auth dependency when T-204 is implemented
+    x_clinic_id: Annotated[UUID, Header(description="Clinic ID (temp auth header)")],
+    response_status: Annotated[
+        ResponseStatusEnum | None, Query(alias="status", description="Filter by response status")
+    ] = None,
+) -> list[DonationResponseDetail]:
+    """
+    List all responses to a specific donation request.
+
+    Only the clinic that owns the request can view responses.
+    Includes dog profile and owner contact information.
+    """
+    # Verify request exists and belongs to clinic
+    request_query = select(BloodDonationRequest).where(BloodDonationRequest.id == request_id)
+    request_result = await db.execute(request_query)
+    donation_request = request_result.scalar_one_or_none()
+
+    if donation_request is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Donation request not found"
+        )
+
+    if donation_request.clinic_id != x_clinic_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You can only view responses to your own clinic's requests",
+        )
+
+    # Build query for responses with related data
+    responses_query = (
+        select(DonationResponse)
+        .options(selectinload(DonationResponse.dog), selectinload(DonationResponse.owner))
+        .where(DonationResponse.request_id == request_id)
+    )
+
+    if response_status is not None:
+        responses_query = responses_query.where(
+            DonationResponse.status == ResponseStatus(response_status.value)
+        )
+
+    responses_query = responses_query.order_by(DonationResponse.created_at.desc())
+
+    result = await db.execute(responses_query)
+    responses = result.scalars().all()
+
+    items = [
+        DonationResponseDetail(
+            id=resp.id,
+            request_id=resp.request_id,
+            status=ResponseStatusEnum(resp.status.value),
+            response_message=resp.response_message,
+            created_at=resp.created_at,
+            dog=DogSummary(
+                id=resp.dog.id,
+                name=resp.dog.name,
+                breed=resp.dog.breed,
+                blood_type=(
+                    BloodTypeEnum(resp.dog.blood_type.value) if resp.dog.blood_type else None
+                ),
+                weight_kg=resp.dog.weight_kg,
+                is_eligible=resp.dog.is_eligible_for_donation,
+            ),
+            owner=OwnerSummary(
+                id=resp.owner.id,
+                email=resp.owner.email,
+            ),
+        )
+        for resp in responses
+    ]
+
+    LOG.info(
+        "List request responses",
+        extra={
+            "request_id": str(request_id),
+            "clinic_id": str(x_clinic_id),
+            "count": len(items),
+            "status_filter": response_status.value if response_status else None,
+        },
+    )
+
+    return items
 
 
 @router.get(

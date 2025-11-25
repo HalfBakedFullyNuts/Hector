@@ -109,3 +109,15 @@ class PaginatedDonationRequests(BaseModel):
     limit: int = Field(description="Maximum items per page")
     offset: int = Field(description="Number of items skipped")
     has_more: bool = Field(description="Whether there are more items available")
+
+
+class DonationRequestCreate(BaseModel):
+    """Schema for creating a donation request."""
+
+    blood_type_needed: BloodTypeEnum | None = Field(
+        default=None, description="Required blood type (null for any)"
+    )
+    volume_ml: int = Field(ge=50, le=500, description="Volume of blood needed in ml (50-500)")
+    urgency: RequestUrgencyEnum = Field(description="Urgency level of the request")
+    needed_by_date: datetime = Field(description="Date by which blood is needed")
+    patient_info: str | None = Field(default=None, description="Optional patient information")
