@@ -1,5 +1,11 @@
 """Pydantic schemas for API request/response validation."""
 
+from .clinic import (
+    ClinicCreate,
+    ClinicOut,
+    ClinicUpdate,
+    PaginatedClinics,
+)
 from .dog_profile import (
     DogProfileCreate,
     DogProfileOut,
@@ -14,6 +20,7 @@ from .donation_request import (
     DonationRequestCreate,
     DonationRequestFilters,
     DonationRequestResponse,
+    DonationRequestUpdate,
     PaginatedDonationRequests,
     RequestStatusEnum,
     RequestUrgencyEnum,
@@ -33,7 +40,10 @@ from .donation_response import (
 
 __all__ = [
     "BloodTypeEnum",
+    "ClinicCreate",
+    "ClinicOut",
     "ClinicSummary",
+    "ClinicUpdate",
     "DogProfileCreate",
     "DogProfileOut",
     "DogProfileUpdate",
@@ -43,12 +53,14 @@ __all__ = [
     "DonationRequestCreate",
     "DonationRequestFilters",
     "DonationRequestResponse",
+    "DonationRequestUpdate",
     "DonationResponseCreate",
     "DonationResponseDetail",
     "DonationResponseOut",
     "DonationResponseWithRequest",
     "EligibilityCheck",
     "OwnerSummary",
+    "PaginatedClinics",
     "PaginatedDogProfiles",
     "PaginatedDonationRequests",
     "PaginatedDonationResponses",

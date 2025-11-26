@@ -17,10 +17,14 @@ from ..models.donation_request import RequestStatus, RequestUrgency
 from ..models.donation_response import DonationResponse
 from ..schemas import (
     BloodTypeEnum,
+    ClinicCreate,
+    ClinicOut,
     ClinicSummary,
+    ClinicUpdate,
     DonationRequestBrowseResponse,
     DonationRequestCreate,
     DonationRequestResponse,
+    PaginatedClinics,
     PaginatedDonationRequests,
     RequestStatusEnum,
     RequestUrgencyEnum,
@@ -29,6 +33,242 @@ from ..schemas import (
 LOG = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/clinics", tags=["clinics"])
+
+
+# =============================================================================
+# Clinic Profile Management (T-400, T-401, T-402, T-403)
+# =============================================================================
+
+
+@router.post(
+    "",
+    summary="Create a clinic profile",
+    response_model=ClinicOut,
+    status_code=status.HTTP_201_CREATED,
+)
+async def create_clinic(
+    clinic_data: ClinicCreate,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    # TODO: Replace with proper auth dependency when T-204 is implemented
+    x_user_id: Annotated[UUID, Header(description="User ID (temp auth header)")],
+) -> ClinicOut:
+    """
+    Create a new clinic profile.
+
+    The clinic will be created with is_approved=False. An admin must approve
+    the clinic before it can create donation requests.
+    """
+    clinic = Clinic(
+        name=clinic_data.name,
+        address=clinic_data.address,
+        city=clinic_data.city,
+        postal_code=clinic_data.postal_code,
+        phone=clinic_data.phone,
+        email=clinic_data.email,
+        latitude=clinic_data.latitude,
+        longitude=clinic_data.longitude,
+        is_approved=False,
+    )
+
+    db.add(clinic)
+    await db.flush()
+
+    LOG.info(
+        "Clinic created",
+        extra={
+            "clinic_id": str(clinic.id),
+            "name": clinic.name,
+            "city": clinic.city,
+            "created_by": str(x_user_id),
+        },
+    )
+
+    return ClinicOut(
+        id=clinic.id,
+        name=clinic.name,
+        address=clinic.address,
+        city=clinic.city,
+        postal_code=clinic.postal_code,
+        phone=clinic.phone,
+        email=clinic.email,
+        latitude=clinic.latitude,
+        longitude=clinic.longitude,
+        is_approved=clinic.is_approved,
+        created_at=clinic.created_at,
+        updated_at=clinic.updated_at,
+    )
+
+
+@router.get(
+    "",
+    summary="List all clinics",
+    response_model=PaginatedClinics,
+)
+async def list_clinics(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    city: Annotated[str | None, Query(description="Filter by city")] = None,
+    approved_only: Annotated[bool, Query(description="Only show approved clinics")] = True,
+    limit: Annotated[int, Query(ge=1, le=100, description="Maximum items per page")] = 20,
+    offset: Annotated[int, Query(ge=0, description="Number of items to skip")] = 0,
+) -> PaginatedClinics:
+    """
+    List all clinics with optional filtering.
+
+    By default, only approved clinics are shown. Set approved_only=false to see all.
+    """
+    base_query = select(Clinic)
+
+    if approved_only:
+        base_query = base_query.where(Clinic.is_approved.is_(True))
+
+    if city:
+        base_query = base_query.where(Clinic.city.ilike(f"%{city}%"))
+
+    # Count total matching
+    count_query = select(func.count()).select_from(base_query.subquery())
+    total_result = await db.execute(count_query)
+    total = total_result.scalar() or 0
+
+    # Apply ordering and pagination
+    base_query = base_query.order_by(Clinic.name.asc())
+    base_query = base_query.limit(limit).offset(offset)
+
+    # Execute query
+    result = await db.execute(base_query)
+    clinics = result.scalars().all()
+
+    items = [
+        ClinicOut(
+            id=c.id,
+            name=c.name,
+            address=c.address,
+            city=c.city,
+            postal_code=c.postal_code,
+            phone=c.phone,
+            email=c.email,
+            latitude=c.latitude,
+            longitude=c.longitude,
+            is_approved=c.is_approved,
+            created_at=c.created_at,
+            updated_at=c.updated_at,
+        )
+        for c in clinics
+    ]
+
+    LOG.info(
+        "List clinics",
+        extra={
+            "total": total,
+            "returned": len(items),
+            "city_filter": city,
+            "approved_only": approved_only,
+        },
+    )
+
+    return PaginatedClinics(
+        items=items,
+        total=total,
+        limit=limit,
+        offset=offset,
+        has_more=(offset + len(items)) < total,
+    )
+
+
+@router.get(
+    "/{clinic_id}",
+    summary="Get clinic details",
+    response_model=ClinicOut,
+)
+async def get_clinic(
+    clinic_id: UUID,
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> ClinicOut:
+    """
+    Get details of a specific clinic.
+    """
+    query = select(Clinic).where(Clinic.id == clinic_id)
+    result = await db.execute(query)
+    clinic = result.scalar_one_or_none()
+
+    if clinic is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Clinic not found")
+
+    return ClinicOut(
+        id=clinic.id,
+        name=clinic.name,
+        address=clinic.address,
+        city=clinic.city,
+        postal_code=clinic.postal_code,
+        phone=clinic.phone,
+        email=clinic.email,
+        latitude=clinic.latitude,
+        longitude=clinic.longitude,
+        is_approved=clinic.is_approved,
+        created_at=clinic.created_at,
+        updated_at=clinic.updated_at,
+    )
+
+
+@router.put(
+    "/{clinic_id}",
+    summary="Update clinic profile",
+    response_model=ClinicOut,
+)
+async def update_clinic(
+    clinic_id: UUID,
+    clinic_data: ClinicUpdate,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    # TODO: Replace with proper auth dependency when T-204 is implemented
+    x_user_id: Annotated[UUID, Header(description="User ID (temp auth header)")],
+) -> ClinicOut:
+    """
+    Update a clinic profile.
+
+    Only clinic staff or admins can update a clinic profile.
+    Only provided fields will be updated.
+    """
+    query = select(Clinic).where(Clinic.id == clinic_id)
+    result = await db.execute(query)
+    clinic = result.scalar_one_or_none()
+
+    if clinic is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Clinic not found")
+
+    # Update only provided fields
+    update_data = clinic_data.model_dump(exclude_unset=True)
+    for field, value in update_data.items():
+        setattr(clinic, field, value)
+
+    await db.flush()
+
+    LOG.info(
+        "Clinic updated",
+        extra={
+            "clinic_id": str(clinic.id),
+            "updated_by": str(x_user_id),
+            "fields_updated": list(update_data.keys()),
+        },
+    )
+
+    return ClinicOut(
+        id=clinic.id,
+        name=clinic.name,
+        address=clinic.address,
+        city=clinic.city,
+        postal_code=clinic.postal_code,
+        phone=clinic.phone,
+        email=clinic.email,
+        latitude=clinic.latitude,
+        longitude=clinic.longitude,
+        is_approved=clinic.is_approved,
+        created_at=clinic.created_at,
+        updated_at=clinic.updated_at,
+    )
+
+
+# =============================================================================
+# Donation Request Management
+# =============================================================================
 
 
 def _map_blood_type(blood_type: BloodTypeEnum | None) -> BloodType | None:

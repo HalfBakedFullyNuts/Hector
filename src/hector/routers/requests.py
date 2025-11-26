@@ -20,6 +20,8 @@ from ..schemas import (
     ClinicSummary,
     DogSummary,
     DonationRequestBrowseResponse,
+    DonationRequestResponse,
+    DonationRequestUpdate,
     DonationResponseCreate,
     DonationResponseDetail,
     DonationResponseOut,
@@ -469,4 +471,164 @@ async def get_request(
         ),
         response_count=response_count,
         is_compatible=None,
+    )
+
+
+@router.put(
+    "/{request_id}",
+    summary="Update a donation request",
+    response_model=DonationRequestResponse,
+)
+async def update_request(
+    request_id: UUID,
+    request_data: DonationRequestUpdate,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    # TODO: Replace with proper auth dependency when T-204 is implemented
+    x_clinic_id: Annotated[UUID, Header(description="Clinic ID (temp auth header)")],
+) -> DonationRequestResponse:
+    """
+    Update a donation request.
+
+    Only the clinic that owns the request can update it.
+    Only OPEN requests can be updated.
+    Only provided fields will be updated.
+    """
+    query = (
+        select(BloodDonationRequest)
+        .options(selectinload(BloodDonationRequest.clinic))
+        .where(BloodDonationRequest.id == request_id)
+    )
+    result = await db.execute(query)
+    req = result.scalar_one_or_none()
+
+    if req is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Request not found")
+
+    if req.clinic_id != x_clinic_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You can only update your own clinic's requests",
+        )
+
+    if req.status != RequestStatus.OPEN:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Cannot update request with status {req.status.value}",
+        )
+
+    # Update only provided fields
+    update_data = request_data.model_dump(exclude_unset=True)
+
+    if "blood_type_needed" in update_data:
+        update_data["blood_type_needed"] = _map_blood_type(update_data["blood_type_needed"])
+
+    if "urgency" in update_data:
+        update_data["urgency"] = _map_urgency(update_data["urgency"])
+
+    for field, value in update_data.items():
+        setattr(req, field, value)
+
+    await db.flush()
+
+    LOG.info(
+        "Donation request updated",
+        extra={
+            "request_id": str(request_id),
+            "clinic_id": str(x_clinic_id),
+            "fields_updated": list(update_data.keys()),
+        },
+    )
+
+    return DonationRequestResponse(
+        id=req.id,
+        clinic_id=req.clinic_id,
+        blood_type_needed=(
+            BloodTypeEnum(req.blood_type_needed.value) if req.blood_type_needed else None
+        ),
+        volume_ml=req.volume_ml,
+        urgency=RequestUrgencyEnum(req.urgency.value),
+        patient_info=req.patient_info,
+        needed_by_date=req.needed_by_date,
+        status=RequestStatusEnum(req.status.value),
+        created_at=req.created_at,
+        updated_at=req.updated_at,
+        clinic=ClinicSummary(
+            id=req.clinic.id,
+            name=req.clinic.name,
+            city=req.clinic.city,
+            phone=req.clinic.phone,
+        ),
+    )
+
+
+@router.post(
+    "/{request_id}/cancel",
+    summary="Cancel a donation request",
+    response_model=DonationRequestResponse,
+)
+async def cancel_request(
+    request_id: UUID,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    # TODO: Replace with proper auth dependency when T-204 is implemented
+    x_clinic_id: Annotated[UUID, Header(description="Clinic ID (temp auth header)")],
+) -> DonationRequestResponse:
+    """
+    Cancel a donation request.
+
+    Only the clinic that owns the request can cancel it.
+    Only OPEN requests can be cancelled.
+    """
+    query = (
+        select(BloodDonationRequest)
+        .options(selectinload(BloodDonationRequest.clinic))
+        .where(BloodDonationRequest.id == request_id)
+    )
+    result = await db.execute(query)
+    req = result.scalar_one_or_none()
+
+    if req is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Request not found")
+
+    if req.clinic_id != x_clinic_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You can only cancel your own clinic's requests",
+        )
+
+    if req.status != RequestStatus.OPEN:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Cannot cancel request with status {req.status.value}",
+        )
+
+    req.status = RequestStatus.CANCELLED
+    await db.flush()
+
+    LOG.info(
+        "Donation request cancelled",
+        extra={
+            "request_id": str(request_id),
+            "clinic_id": str(x_clinic_id),
+        },
+    )
+
+    return DonationRequestResponse(
+        id=req.id,
+        clinic_id=req.clinic_id,
+        blood_type_needed=(
+            BloodTypeEnum(req.blood_type_needed.value) if req.blood_type_needed else None
+        ),
+        volume_ml=req.volume_ml,
+        urgency=RequestUrgencyEnum(req.urgency.value),
+        patient_info=req.patient_info,
+        needed_by_date=req.needed_by_date,
+        status=RequestStatusEnum(req.status.value),
+        created_at=req.created_at,
+        updated_at=req.updated_at,
+        clinic=ClinicSummary(
+            id=req.clinic.id,
+            name=req.clinic.name,
+            city=req.clinic.city,
+            phone=req.clinic.phone,
+        ),
     )

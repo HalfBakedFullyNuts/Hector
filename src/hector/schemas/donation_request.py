@@ -121,3 +121,21 @@ class DonationRequestCreate(BaseModel):
     urgency: RequestUrgencyEnum = Field(description="Urgency level of the request")
     needed_by_date: datetime = Field(description="Date by which blood is needed")
     patient_info: str | None = Field(default=None, description="Optional patient information")
+
+
+class DonationRequestUpdate(BaseModel):
+    """Schema for updating a donation request."""
+
+    blood_type_needed: BloodTypeEnum | None = Field(
+        default=None, description="Required blood type (null for any)"
+    )
+    volume_ml: int | None = Field(
+        default=None, ge=50, le=500, description="Volume of blood needed in ml (50-500)"
+    )
+    urgency: RequestUrgencyEnum | None = Field(
+        default=None, description="Urgency level of the request"
+    )
+    needed_by_date: datetime | None = Field(
+        default=None, description="Date by which blood is needed"
+    )
+    patient_info: str | None = Field(default=None, description="Optional patient information")
