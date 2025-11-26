@@ -1,10 +1,11 @@
 """Blood donation request endpoints for browsing and responding."""
 
 import logging
-from typing import Annotated
+from typing import Annotated, Any
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
+from pydantic import BaseModel, Field
 from sqlalchemy import case, func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -631,4 +632,314 @@ async def cancel_request(
             city=req.clinic.city,
             phone=req.clinic.phone,
         ),
+    )
+
+
+# =============================================================================
+# T-603: Mark Response as Completed
+# =============================================================================
+
+
+class CompletedResponseOut(BaseModel):
+    """Output schema for completed response."""
+
+    id: UUID
+    request_id: UUID
+    dog_id: UUID
+    owner_id: UUID
+    status: ResponseStatusEnum
+    response_message: str | None
+    created_at: Any  # datetime
+    updated_at: Any  # datetime
+    last_donation_date: Any  # date
+
+
+@router.post(
+    "/responses/{response_id}/complete",
+    summary="Mark a donation response as completed",
+    response_model=CompletedResponseOut,
+)
+async def complete_response(
+    response_id: UUID,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    # TODO: Replace with proper auth dependency when T-204 is implemented
+    x_clinic_id: Annotated[UUID, Header(description="Clinic ID (temp auth header)")],
+) -> CompletedResponseOut:
+    """
+    Mark a donation response as completed.
+
+    Only the clinic that owns the request can mark responses as completed.
+    Updates the dog's last_donation_date to today.
+    """
+    from datetime import date
+
+    # Get the response with related data
+    query = (
+        select(DonationResponse)
+        .options(
+            selectinload(DonationResponse.request),
+            selectinload(DonationResponse.dog),
+        )
+        .where(DonationResponse.id == response_id)
+    )
+    result = await db.execute(query)
+    response = result.scalar_one_or_none()
+
+    if response is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Response not found",
+        )
+
+    # Check clinic owns the request
+    if response.request.clinic_id != x_clinic_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You can only complete responses to your own clinic's requests",
+        )
+
+    # Check response is ACCEPTED
+    if response.status != ResponseStatus.ACCEPTED:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Can only complete ACCEPTED responses, current status: {response.status.value}",
+        )
+
+    # Update response status
+    response.status = ResponseStatus.COMPLETED
+
+    # Update dog's last donation date
+    today = date.today()
+    response.dog.last_donation_date = today
+
+    await db.flush()
+
+    LOG.info(
+        "Donation response completed",
+        extra={
+            "response_id": str(response_id),
+            "request_id": str(response.request_id),
+            "dog_id": str(response.dog_id),
+            "clinic_id": str(x_clinic_id),
+        },
+    )
+
+    return CompletedResponseOut(
+        id=response.id,
+        request_id=response.request_id,
+        dog_id=response.dog_id,
+        owner_id=response.owner_id,
+        status=ResponseStatusEnum(response.status.value),
+        response_message=response.response_message,
+        created_at=response.created_at,
+        updated_at=response.updated_at,
+        last_donation_date=today,
+    )
+
+
+# =============================================================================
+# T-604: Blood Type Compatibility
+# =============================================================================
+
+
+# Blood type compatibility matrix for canine blood
+# DEA 1.1 negative is universal donor
+BLOOD_COMPATIBILITY: dict[str, list[str]] = {
+    "DEA_1_1_NEGATIVE": [
+        "DEA_1_1_POSITIVE",
+        "DEA_1_1_NEGATIVE",
+        "DEA_1_2_POSITIVE",
+        "DEA_1_2_NEGATIVE",
+        "DEA_3_POSITIVE",
+        "DEA_3_NEGATIVE",
+        "DEA_4_POSITIVE",
+        "DEA_4_NEGATIVE",
+        "DEA_5_POSITIVE",
+        "DEA_5_NEGATIVE",
+        "DEA_7_POSITIVE",
+        "DEA_7_NEGATIVE",
+        "UNKNOWN",
+    ],
+    "DEA_1_1_POSITIVE": ["DEA_1_1_POSITIVE"],
+    "DEA_1_2_NEGATIVE": ["DEA_1_2_POSITIVE", "DEA_1_2_NEGATIVE"],
+    "DEA_1_2_POSITIVE": ["DEA_1_2_POSITIVE"],
+    "DEA_3_NEGATIVE": ["DEA_3_POSITIVE", "DEA_3_NEGATIVE"],
+    "DEA_3_POSITIVE": ["DEA_3_POSITIVE"],
+    "DEA_4_NEGATIVE": ["DEA_4_POSITIVE", "DEA_4_NEGATIVE"],
+    "DEA_4_POSITIVE": ["DEA_4_POSITIVE"],
+    "DEA_5_NEGATIVE": ["DEA_5_POSITIVE", "DEA_5_NEGATIVE"],
+    "DEA_5_POSITIVE": ["DEA_5_POSITIVE"],
+    "DEA_7_NEGATIVE": ["DEA_7_POSITIVE", "DEA_7_NEGATIVE"],
+    "DEA_7_POSITIVE": ["DEA_7_POSITIVE"],
+    "UNKNOWN": [],  # Unknown blood type cannot safely donate
+}
+
+
+class CompatibleRequestResponse(BaseModel):
+    """Response for compatible requests endpoint."""
+
+    id: UUID
+    clinic_id: UUID
+    blood_type_needed: BloodTypeEnum | None
+    volume_ml: int
+    urgency: RequestUrgencyEnum
+    needed_by_date: Any  # datetime
+    status: RequestStatusEnum
+    created_at: Any  # datetime
+    clinic: ClinicSummary
+    compatibility_score: int = Field(description="Compatibility score (higher is better)")
+
+
+class PaginatedCompatibleRequests(BaseModel):
+    """Paginated compatible requests response."""
+
+    items: list[CompatibleRequestResponse]
+    total: int
+    limit: int
+    offset: int
+    has_more: bool
+
+
+@router.get(
+    "/compatible",
+    summary="Get compatible donation requests for a dog",
+    response_model=PaginatedCompatibleRequests,
+)
+async def get_compatible_requests(
+    dog_id: Annotated[UUID, Query(description="Dog ID to check compatibility for")],
+    db: Annotated[AsyncSession, Depends(get_db)],
+    # TODO: Replace with proper auth dependency when T-204 is implemented
+    x_user_id: Annotated[UUID, Header(description="User ID (temp auth header)")],
+    limit: Annotated[int, Query(ge=1, le=100)] = 20,
+    offset: Annotated[int, Query(ge=0)] = 0,
+) -> PaginatedCompatibleRequests:
+    """
+    Get donation requests compatible with a specific dog's blood type.
+
+    Only shows requests where:
+    - The dog is owned by the authenticated user
+    - The dog is available and eligible for donation
+    - The blood types are compatible
+    - The request is OPEN
+    """
+
+    # Verify dog exists and belongs to user
+    dog_query = select(DogProfile).where(DogProfile.id == dog_id)
+    dog_result = await db.execute(dog_query)
+    dog = dog_result.scalar_one_or_none()
+
+    if dog is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Dog not found")
+
+    if dog.owner_id != x_user_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You can only check compatibility for your own dogs",
+        )
+
+    # Check dog eligibility
+    eligibility = _check_dog_eligibility(dog)
+    if not eligibility.is_eligible:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={
+                "message": "Dog is not eligible for donation",
+                "reasons": eligibility.reasons,
+            },
+        )
+
+    # Get dog's blood type
+    dog_blood_type = dog.blood_type.value if dog.blood_type else "UNKNOWN"
+
+    # Get compatible blood types this dog can donate to
+    compatible_types = BLOOD_COMPATIBILITY.get(dog_blood_type, [])
+
+    # Build query for compatible requests
+    base_query = (
+        select(BloodDonationRequest)
+        .options(selectinload(BloodDonationRequest.clinic))
+        .join(Clinic)
+        .where(BloodDonationRequest.status == RequestStatus.OPEN)
+    )
+
+    # Filter by compatible blood types or requests that accept any blood type
+    if compatible_types:
+        compatible_blood_enums = [BloodType(bt) for bt in compatible_types if bt != "UNKNOWN"]
+        base_query = base_query.where(
+            (BloodDonationRequest.blood_type_needed.is_(None))
+            | (BloodDonationRequest.blood_type_needed.in_(compatible_blood_enums))
+        )
+    else:
+        # Dog has unknown blood type, only show requests with no specific blood type needed
+        base_query = base_query.where(BloodDonationRequest.blood_type_needed.is_(None))
+
+    # Count total
+    count_query = select(func.count()).select_from(base_query.subquery())
+    total_result = await db.execute(count_query)
+    total = total_result.scalar() or 0
+
+    # Apply sorting and pagination
+    urgency_order = case(
+        (BloodDonationRequest.urgency == RequestUrgency.CRITICAL, 0),
+        (BloodDonationRequest.urgency == RequestUrgency.URGENT, 1),
+        (BloodDonationRequest.urgency == RequestUrgency.ROUTINE, 2),
+        else_=3,
+    )
+    base_query = base_query.order_by(urgency_order, BloodDonationRequest.created_at.desc())
+    base_query = base_query.limit(limit).offset(offset)
+
+    result = await db.execute(base_query)
+    requests_list = result.scalars().all()
+
+    # Calculate compatibility scores
+    items = []
+    for req in requests_list:
+        # Higher score for exact match, lower for universal donor
+        if req.blood_type_needed is None:
+            score = 50  # Any blood type accepted
+        elif dog_blood_type == "DEA_1_1_NEGATIVE":
+            score = 100  # Universal donor - perfect match
+        elif req.blood_type_needed.value == dog_blood_type:
+            score = 100  # Exact match
+        else:
+            score = 75  # Compatible but not exact
+
+        items.append(
+            CompatibleRequestResponse(
+                id=req.id,
+                clinic_id=req.clinic_id,
+                blood_type_needed=(
+                    BloodTypeEnum(req.blood_type_needed.value) if req.blood_type_needed else None
+                ),
+                volume_ml=req.volume_ml,
+                urgency=RequestUrgencyEnum(req.urgency.value),
+                needed_by_date=req.needed_by_date,
+                status=RequestStatusEnum(req.status.value),
+                created_at=req.created_at,
+                clinic=ClinicSummary(
+                    id=req.clinic.id,
+                    name=req.clinic.name,
+                    city=req.clinic.city,
+                    phone=req.clinic.phone,
+                ),
+                compatibility_score=score,
+            )
+        )
+
+    LOG.info(
+        "Compatible requests retrieved",
+        extra={
+            "dog_id": str(dog_id),
+            "dog_blood_type": dog_blood_type,
+            "total_compatible": total,
+            "returned": len(items),
+        },
+    )
+
+    return PaginatedCompatibleRequests(
+        items=items,
+        total=total,
+        limit=limit,
+        offset=offset,
+        has_more=(offset + len(items)) < total,
     )

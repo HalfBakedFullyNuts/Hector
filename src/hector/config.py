@@ -40,6 +40,19 @@ class Settings(BaseSettings):
     )
     db_echo: bool = Field(False, description="Echo SQL statements for debugging")
 
+    # JWT settings
+    jwt_secret_key: str = Field(
+        default="CHANGE-ME-IN-PRODUCTION-USE-STRONG-SECRET",
+        description="Secret key for JWT token signing",
+    )
+    jwt_algorithm: str = Field(default="HS256", description="JWT signing algorithm")
+    access_token_expire_minutes: int = Field(
+        default=15, ge=1, description="Access token expiration in minutes"
+    )
+    refresh_token_expire_days: int = Field(
+        default=7, ge=1, description="Refresh token expiration in days"
+    )
+
 
 @lru_cache(maxsize=1)
 def get_settings() -> Settings:
