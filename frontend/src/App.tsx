@@ -12,10 +12,13 @@ import { DonorDashboard } from './pages/donor/DonorDashboard';
 import { DogProfileForm } from './pages/donor/DogProfileForm';
 import { UserRole } from './types/auth';
 
+import { DevTools } from './components/dev/DevTools';
+
 function App() {
   return (
     <BrowserRouter>
       <AuthProvider>
+        <DevTools />
         <Routes>
           {/* Public routes */}
           <Route path="/login" element={<LoginPage />} />

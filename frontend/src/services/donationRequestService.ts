@@ -5,28 +5,98 @@
 
 import { apiClient } from './apiClient';
 import { API_ENDPOINTS } from '../config/api';
-import {
+import type {
   BloodDonationRequest,
   DonationRequestCreate,
   DonationResponse,
   DonationResponseCreate,
-  RequestStatus,
-  ResponseStatus,
 } from '../types/donationRequest';
+import { RequestUrgency, RequestStatus, ResponseStatus } from '../types/donationRequest';
+import { BloodType } from '../types/dog';
+
+const MOCK_REQUESTS: BloodDonationRequest[] = [
+  {
+    id: 'req-1',
+    clinic_id: 'clinic-1',
+    urgency: RequestUrgency.CRITICAL,
+    status: RequestStatus.OPEN,
+    blood_type_needed: BloodType.DEA_1_1_NEGATIVE,
+    volume_ml: 450,
+    needed_by_date: '2023-11-30',
+    reason_for_transfusion: 'Urgent need for a surgery case. Universal donor preferred.',
+    patient_breed: 'Labrador',
+    contact_person: 'Dr. Smith',
+    contact_phone: '555-0123',
+    special_notes: null,
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+    clinic: {
+      id: 'clinic-1',
+      name: 'City Vet Clinic',
+      address: '123 Main St',
+      city: 'New York',
+    },
+  },
+  {
+    id: 'req-2',
+    clinic_id: 'clinic-2',
+    urgency: RequestUrgency.ROUTINE,
+    status: RequestStatus.OPEN,
+    blood_type_needed: BloodType.DEA_1_1_POSITIVE,
+    volume_ml: 300,
+    needed_by_date: '2023-12-05',
+    reason_for_transfusion: 'Scheduled procedure requiring backup blood supply.',
+    patient_breed: 'Poodle',
+    contact_person: 'Nurse Joy',
+    contact_phone: '555-0456',
+    special_notes: null,
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+    clinic: {
+      id: 'clinic-2',
+      name: 'Paws & Claws Hospital',
+      address: '456 Oak Ave',
+      city: 'Los Angeles',
+    },
+  },
+];
+
+const MOCK_RESPONSES: DonationResponse[] = [
+  {
+    id: 'resp-1',
+    request_id: 'req-3',
+    dog_id: 'dog-1',
+    owner_id: 'dev-owner-001',
+    status: ResponseStatus.PENDING,
+    response_message: 'Can donate anytime this week.',
+    created_at: new Date(Date.now() - 86400000).toISOString(), // 1 day ago
+    updated_at: new Date().toISOString(),
+    dog: {
+      id: 'dog-1',
+      name: 'Buddy',
+      breed: 'Golden Retriever',
+      blood_type: BloodType.DEA_1_1_NEGATIVE,
+    },
+  },
+];
 
 export const donationRequestService = {
   /**
    * Get all donation requests (with optional filters)
    */
-  async getRequests(params?: {
+  async getRequests(_params?: {
     status?: RequestStatus;
     clinic_id?: string;
   }): Promise<BloodDonationRequest[]> {
-    const response = await apiClient.get<BloodDonationRequest[]>(
-      API_ENDPOINTS.DONATION_REQUESTS,
-      { params }
-    );
-    return response.data;
+    // Mock data for development
+    return new Promise((resolve) => {
+      setTimeout(() => resolve(MOCK_REQUESTS), 500);
+    });
+    // const response = await apiClient.get<BloodDonationRequest[]>(
+    //   API_ENDPOINTS.DONATION_REQUESTS,
+    //   { params }
+    // );
+    // return response.data;
   },
 
   /**
@@ -95,10 +165,14 @@ export const donationRequestService = {
    * Get user's own responses (dog owner)
    */
   async getMyResponses(): Promise<DonationResponse[]> {
-    const response = await apiClient.get<DonationResponse[]>(
-      `${API_ENDPOINTS.DONATION_REQUESTS}/my-responses`
-    );
-    return response.data;
+    // Mock data for development
+    return new Promise((resolve) => {
+      setTimeout(() => resolve(MOCK_RESPONSES), 500);
+    });
+    // const response = await apiClient.get<DonationResponse[]>(
+    //   `${API_ENDPOINTS.DONATION_REQUESTS}/my-responses`
+    // );
+    // return response.data;
   },
 
   /**

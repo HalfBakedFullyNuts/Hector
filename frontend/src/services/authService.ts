@@ -5,7 +5,7 @@
 
 import { apiClient } from './apiClient';
 import { API_ENDPOINTS } from '../config/api';
-import {
+import type {
   LoginRequest,
   LoginResponse,
   RegisterRequest,

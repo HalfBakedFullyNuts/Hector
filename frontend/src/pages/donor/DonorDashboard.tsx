@@ -11,8 +11,8 @@ import { DonationRequestCard } from '../../components/common/DonationRequestCard
 import { Button } from '../../components/common/Button';
 import { dogService } from '../../services/dogService';
 import { donationRequestService } from '../../services/donationRequestService';
-import { DogProfile } from '../../types/dog';
-import { BloodDonationRequest, DonationResponse } from '../../types/donationRequest';
+import type { DogProfile } from '../../types/dog';
+import { type BloodDonationRequest, type DonationResponse, RequestStatus } from '../../types/donationRequest';
 
 export const DonorDashboard: React.FC = () => {
   const navigate = useNavigate();
@@ -35,7 +35,7 @@ export const DonorDashboard: React.FC = () => {
       // Load all data in parallel
       const [dogsData, requestsData, responsesData] = await Promise.all([
         dogService.getMyDogs(),
-        donationRequestService.getRequests({ status: 'OPEN' }),
+        donationRequestService.getRequests({ status: 'OPEN' as RequestStatus }),
         donationRequestService.getMyResponses(),
       ]);
 

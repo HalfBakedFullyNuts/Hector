@@ -64,7 +64,7 @@ export const DogProfileForm: React.FC = () => {
     reset,
     watch,
   } = useForm<DogProfileFormData>({
-    resolver: zodResolver(dogProfileSchema),
+    resolver: zodResolver(dogProfileSchema) as any,
     defaultValues: {
       name: '',
       breed: '',
@@ -257,11 +257,10 @@ export const DogProfileForm: React.FC = () => {
               {/* Eligibility Indicator */}
               {eligibilityInfo && (
                 <div
-                  className={`p-3 rounded-input text-sm ${
-                    eligibilityInfo.eligible
-                      ? 'bg-green-50 border border-green-200 text-green-700'
-                      : 'bg-yellow-50 border border-yellow-200 text-yellow-700'
-                  }`}
+                  className={`p-3 rounded-input text-sm ${eligibilityInfo.eligible
+                    ? 'bg-green-50 border border-green-200 text-green-700'
+                    : 'bg-yellow-50 border border-yellow-200 text-yellow-700'
+                    }`}
                 >
                   <div className="flex items-center gap-2 mb-1">
                     <span className="font-medium">
@@ -364,8 +363,8 @@ export const DogProfileForm: React.FC = () => {
               {isSubmitting
                 ? 'Saving...'
                 : isEditMode
-                ? 'Update Dog Profile'
-                : 'Create Dog Profile'}
+                  ? 'Update Dog Profile'
+                  : 'Create Dog Profile'}
             </Button>
           </div>
         </form>

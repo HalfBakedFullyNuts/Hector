@@ -1,11 +1,46 @@
 /**
  * Authentication Context
  * Manages user authentication state across the application
+ *
+ * NOTE: DEV_MODE is enabled - auto-logged in as admin for testing
  */
 
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { User, LoginRequest, RegisterRequest } from '../types/auth';
-import { authService } from '../services/authService';
+import React, { createContext, useContext, useState, type ReactNode } from 'react';
+import { UserRole } from '../types/auth';
+import type { User, LoginRequest, RegisterRequest } from '../types/auth';
+
+// DEV MODE: Set to true to bypass authentication
+const DEV_MODE = true;
+
+// Mock admin user for development
+export const MOCK_ADMIN_USER: User = {
+  id: 'dev-admin-001',
+  email: 'admin@hector.dev',
+  role: UserRole.ADMIN,
+  is_active: true,
+  is_verified: true,
+  created_at: new Date().toISOString(),
+};
+
+// Mock clinic user for development
+export const MOCK_CLINIC_USER: User = {
+  id: 'dev-clinic-001',
+  email: 'clinic@hector.dev',
+  role: UserRole.CLINIC_STAFF,
+  is_active: true,
+  is_verified: true,
+  created_at: new Date().toISOString(),
+};
+
+// Mock dog owner user for development
+export const MOCK_DOG_OWNER_USER: User = {
+  id: 'dev-owner-001',
+  email: 'owner@hector.dev',
+  role: UserRole.DOG_OWNER,
+  is_active: true,
+  is_verified: true,
+  created_at: new Date().toISOString(),
+};
 
 interface AuthContextType {
   user: User | null;
@@ -15,6 +50,7 @@ interface AuthContextType {
   register: (userData: RegisterRequest) => Promise<void>;
   logout: () => void;
   clearError: () => void;
+  devLogin: (role: UserRole) => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -24,72 +60,50 @@ interface AuthProviderProps {
 }
 
 export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
-  const [user, setUser] = useState<User | null>(null);
-  const [loading, setLoading] = useState<boolean>(true);
+  // In DEV_MODE, start with mock admin user
+  const [user, setUser] = useState<User | null>(DEV_MODE ? MOCK_DOG_OWNER_USER : null);
+  const [loading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Check if user is logged in on mount
-  useEffect(() => {
-    const initAuth = async () => {
-      if (authService.isAuthenticated()) {
-        try {
-          const currentUser = await authService.getCurrentUser();
-          setUser(currentUser);
-        } catch (err) {
-          // Token invalid or expired - clear it
-          authService.logout();
-          setUser(null);
-        }
-      }
-      setLoading(false);
-    };
-
-    initAuth();
-  }, []);
-
-  const login = async (credentials: LoginRequest) => {
-    try {
-      setError(null);
-      setLoading(true);
-      const response = await authService.login(credentials);
-      setUser(response.user);
-    } catch (err: unknown) {
-      const errorMessage =
-        err instanceof Error ? err.message : 'Login failed. Please try again.';
-      setError(errorMessage);
-      throw err;
-    } finally {
-      setLoading(false);
+  const login = async (_credentials: LoginRequest) => {
+    if (DEV_MODE) {
+      setUser(MOCK_DOG_OWNER_USER);
+      return;
     }
+    // Real login logic would go here
   };
 
-  const register = async (userData: RegisterRequest) => {
-    try {
-      setError(null);
-      setLoading(true);
-      await authService.register(userData);
-      // After registration, automatically log in
-      await login({ email: userData.email, password: userData.password });
-    } catch (err: unknown) {
-      const errorMessage =
-        err instanceof Error
-          ? err.message
-          : 'Registration failed. Please try again.';
-      setError(errorMessage);
-      throw err;
-    } finally {
-      setLoading(false);
+  const register = async (_userData: RegisterRequest) => {
+    if (DEV_MODE) {
+      setUser(MOCK_DOG_OWNER_USER);
+      return;
     }
+    // Real register logic would go here
   };
 
   const logout = () => {
-    authService.logout();
-    setUser(null);
+    if (!DEV_MODE) {
+      setUser(null);
+    }
     setError(null);
   };
 
   const clearError = () => {
     setError(null);
+  };
+
+  const devLogin = (role: UserRole) => {
+    switch (role) {
+      case UserRole.ADMIN:
+        setUser(MOCK_ADMIN_USER);
+        break;
+      case UserRole.CLINIC_STAFF:
+        setUser(MOCK_CLINIC_USER);
+        break;
+      case UserRole.DOG_OWNER:
+        setUser(MOCK_DOG_OWNER_USER);
+        break;
+    }
   };
 
   const value: AuthContextType = {
@@ -100,6 +114,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     register,
     logout,
     clearError,
+    devLogin,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

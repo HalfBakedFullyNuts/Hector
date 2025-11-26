@@ -4,7 +4,7 @@
  */
 
 import React from 'react';
-import { DogProfile, BloodType } from '../../types/dog';
+import type { DogProfile } from '../../types/dog';
 
 interface DogProfileCardProps {
   dog: DogProfile;
@@ -26,9 +26,8 @@ export const DogProfileCard: React.FC<DogProfileCardProps> = ({ dog, onClick }) 
   return (
     <div
       onClick={onClick}
-      className={`card hover:shadow-lg transition-shadow ${
-        onClick ? 'cursor-pointer' : ''
-      }`}
+      className={`card hover:shadow-lg transition-shadow ${onClick ? 'cursor-pointer' : ''
+        }`}
     >
       {/* Header with name and availability */}
       <div className="flex items-start justify-between mb-4">
@@ -39,11 +38,10 @@ export const DogProfileCard: React.FC<DogProfileCardProps> = ({ dog, onClick }) 
           <p className="text-sm text-text-light">{dog.breed}</p>
         </div>
         <div
-          className={`px-3 py-1 rounded-full text-xs font-medium ${
-            dog.is_active
-              ? 'bg-primary-green text-green-800'
-              : 'bg-gray-200 text-gray-600'
-          }`}
+          className={`px-3 py-1 rounded-full text-xs font-medium ${dog.is_active
+            ? 'bg-primary-green text-green-800'
+            : 'bg-gray-200 text-gray-600'
+            }`}
         >
           {dog.is_active ? 'Available' : 'Unavailable'}
         </div>
@@ -82,11 +80,10 @@ export const DogProfileCard: React.FC<DogProfileCardProps> = ({ dog, onClick }) 
 
       {/* Eligibility Status */}
       <div
-        className={`p-3 rounded-input text-sm ${
-          eligibilityStatus.eligible
-            ? 'bg-green-50 border border-green-200 text-green-700'
-            : 'bg-yellow-50 border border-yellow-200 text-yellow-700'
-        }`}
+        className={`p-3 rounded-input text-sm ${eligibilityStatus.eligible
+          ? 'bg-green-50 border border-green-200 text-green-700'
+          : 'bg-yellow-50 border border-yellow-200 text-yellow-700'
+          }`}
       >
         <span className="font-medium">
           {eligibilityStatus.eligible ? '✅ Eligible' : '⚠️ Not Eligible'}

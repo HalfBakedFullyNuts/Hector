@@ -8,7 +8,7 @@ export enum UserRole {
   ADMIN = 'ADMIN',
 }
 
-export interface User {
+export type User = {
   id: string;
   email: string;
   role: UserRole;
@@ -17,34 +17,34 @@ export interface User {
   created_at: string;
 }
 
-export interface LoginRequest {
+export type LoginRequest = {
   email: string;
   password: string;
 }
 
-export interface LoginResponse {
+export type LoginResponse = {
   access_token: string;
   refresh_token: string;
   token_type: string;
   user: User;
 }
 
-export interface RegisterRequest {
+export type RegisterRequest = {
   email: string;
   password: string;
   role: UserRole;
 }
 
-export interface RegisterResponse {
+export type RegisterResponse = {
   user: User;
   message: string;
 }
 
-export interface RefreshTokenRequest {
+export type RefreshTokenRequest = {
   refresh_token: string;
 }
 
-export interface RefreshTokenResponse {
+export type RefreshTokenResponse = {
   access_token: string;
   refresh_token?: string;
   token_type: string;

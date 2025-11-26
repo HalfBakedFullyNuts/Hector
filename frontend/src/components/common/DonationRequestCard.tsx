@@ -1,14 +1,8 @@
-/**
- * Donation Request Card Component
- * Displays blood donation request information
- */
-
 import React from 'react';
-import {
+import type {
   BloodDonationRequest,
-  RequestUrgency,
-  RequestStatus,
 } from '../../types/donationRequest';
+import { RequestUrgency } from '../../types/donationRequest';
 import { Button } from './Button';
 
 interface DonationRequestCardProps {
@@ -40,9 +34,8 @@ export const DonationRequestCard: React.FC<DonationRequestCardProps> = ({
 
   return (
     <div
-      className={`card hover:shadow-lg transition-shadow ${
-        onClick ? 'cursor-pointer' : ''
-      }`}
+      className={`card hover: shadow - lg transition - shadow ${onClick ? 'cursor-pointer' : ''
+        } `}
       onClick={onClick && !showOfferButton ? onClick : undefined}
     >
       {/* Header */}
@@ -59,7 +52,7 @@ export const DonationRequestCard: React.FC<DonationRequestCardProps> = ({
           </div>
         </div>
         <div
-          className={`px-3 py-1 rounded-full text-xs font-medium ${urgencyConfig.className}`}
+          className={`px - 3 py - 1 rounded - full text - xs font - medium ${urgencyConfig.className} `}
         >
           {urgencyConfig.icon} {urgencyConfig.label}
         </div>
@@ -104,13 +97,12 @@ export const DonationRequestCard: React.FC<DonationRequestCardProps> = ({
 
       {/* Needed By Date */}
       <div
-        className={`p-3 rounded-input text-sm mb-4 ${
-          daysUntilNeeded <= 2
-            ? 'bg-red-50 border border-red-200 text-red-700'
-            : daysUntilNeeded <= 7
+        className={`p - 3 rounded - input text - sm mb - 4 ${daysUntilNeeded <= 2
+          ? 'bg-red-50 border border-red-200 text-red-700'
+          : daysUntilNeeded <= 7
             ? 'bg-yellow-50 border border-yellow-200 text-yellow-700'
             : 'bg-blue-50 border border-blue-200 text-blue-700'
-        }`}
+          } `}
       >
         <span className="font-medium">
           Needed by: {formatDate(request.needed_by_date)}
@@ -119,8 +111,8 @@ export const DonationRequestCard: React.FC<DonationRequestCardProps> = ({
           {daysUntilNeeded === 0
             ? 'Needed today'
             : daysUntilNeeded === 1
-            ? 'Needed tomorrow'
-            : `${daysUntilNeeded} days from now`}
+              ? 'Needed tomorrow'
+              : `${daysUntilNeeded} days from now`}
         </p>
       </div>
 
