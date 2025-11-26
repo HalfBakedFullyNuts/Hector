@@ -1,9 +1,14 @@
 """Clinic model for veterinary clinics."""
 
+from typing import TYPE_CHECKING
+
 from sqlalchemy import Boolean, Float, String, Text
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .base import BaseModel
+
+if TYPE_CHECKING:
+    from .user import User
 
 
 class Clinic(BaseModel):
@@ -72,9 +77,15 @@ class Clinic(BaseModel):
     )
 
     # Relationships
-    # staff: Relationship to User (many-to-many through association table)
+    staff: Mapped[list["User"]] = relationship(
+        "User",
+        secondary="clinic_staff",
+        back_populates="clinics",
+        doc="Staff members of this clinic",
+    )
+
     # requests: Relationship to BloodDonationRequest (one-to-many)
-    # Will be defined when implementing relationships
+    # Will be defined when implementing donation requests
 
     def __repr__(self) -> str:
         """Return string representation of the clinic."""
