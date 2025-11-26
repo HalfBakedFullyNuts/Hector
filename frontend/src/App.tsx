@@ -3,9 +3,12 @@
  * Sets up routing and authentication context
  */
 
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { AuthProvider } from './contexts/AuthContext';
+import { ViewAsProvider } from './contexts/ViewAsContext';
 import { ProtectedRoute } from './components/common/ProtectedRoute';
+import { PublicLayout } from './components/layout/PublicLayout';
+import { LandingPage } from './pages/public/LandingPage';
 import { LoginPage } from './pages/auth/LoginPage';
 import { RegisterPage } from './pages/auth/RegisterPage';
 import { DonorDashboard } from './pages/donor/DonorDashboard';
@@ -18,11 +21,34 @@ function App() {
   return (
     <BrowserRouter>
       <AuthProvider>
-        <DevTools />
-        <Routes>
+        <ViewAsProvider>
+          <DevTools />
+          <Routes>
           {/* Public routes */}
-          <Route path="/login" element={<LoginPage />} />
-          <Route path="/register" element={<RegisterPage />} />
+          <Route
+            path="/"
+            element={
+              <PublicLayout>
+                <LandingPage />
+              </PublicLayout>
+            }
+          />
+          <Route
+            path="/login"
+            element={
+              <PublicLayout showHeader={false}>
+                <LoginPage />
+              </PublicLayout>
+            }
+          />
+          <Route
+            path="/register"
+            element={
+              <PublicLayout showHeader={false}>
+                <RegisterPage />
+              </PublicLayout>
+            }
+          />
 
           {/* Dog Owner routes */}
           <Route
@@ -84,9 +110,6 @@ function App() {
             }
           />
 
-          {/* Default redirect */}
-          <Route path="/" element={<Navigate to="/login" replace />} />
-
           {/* 404 - Not found */}
           <Route
             path="*"
@@ -100,16 +123,17 @@ function App() {
                     The page you're looking for doesn't exist.
                   </p>
                   <a
-                    href="/login"
+                    href="/"
                     className="text-primary-blue hover:text-primary-blue-dark font-medium"
                   >
-                    Go to Login
+                    Go to Home
                   </a>
                 </div>
               </div>
             }
           />
-        </Routes>
+          </Routes>
+        </ViewAsProvider>
       </AuthProvider>
     </BrowserRouter>
   );

@@ -117,7 +117,7 @@ export const LoginPage: React.FC = () => {
           </Button>
         </form>
 
-        <div className="mt-6 text-center">
+        <div className="mt-6 text-center space-y-2">
           <p className="text-text-light">
             Don't have an account?{' '}
             <Link
@@ -125,6 +125,14 @@ export const LoginPage: React.FC = () => {
               className="text-primary-blue hover:text-primary-blue-dark font-medium"
             >
               Register here
+            </Link>
+          </p>
+          <p>
+            <Link
+              to="/"
+              className="text-sm text-text-placeholder hover:text-text-light"
+            >
+              &larr; Back to home
             </Link>
           </p>
         </div>
