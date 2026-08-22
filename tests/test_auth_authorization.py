@@ -350,11 +350,11 @@ class TestRoleBasedAuthorization:
 
         assert response.status_code == 403
 
-    async def test_role_check_without_authentication_returns_403(
+    async def test_role_check_without_authentication_returns_401(
         self,
         client: AsyncClient,
     ) -> None:
-        """Test role-protected endpoint without auth returns 403."""
+        """Test role-protected endpoint without auth returns 401 (T-300)."""
         response = await client.get("/test/admin-only")
 
-        assert response.status_code == 403
+        assert response.status_code == 401

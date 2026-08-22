@@ -201,7 +201,8 @@ class TestCreateDogProfile:
         }
 
         response = await async_client.post("/dogs", json=request_data)
-        assert response.status_code == 403  # No authorization header
+        # Missing credentials must yield 401 per T-300
+        assert response.status_code == 401
 
 
 class TestListMyDogs:
@@ -248,7 +249,8 @@ class TestListMyDogs:
     ) -> None:
         """Test listing dog profiles without authentication."""
         response = await async_client.get("/dogs")
-        assert response.status_code == 403
+        # Missing credentials must yield 401 per T-300
+        assert response.status_code == 401
 
 
 class TestGetDogProfile:

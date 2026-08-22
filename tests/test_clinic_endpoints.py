@@ -241,7 +241,8 @@ class TestCreateClinic:
         }
 
         response = await async_client.post("/clinics", json=request_data)
-        assert response.status_code == 403
+        # Missing credentials must yield 401 per T-400/T-300 conventions
+        assert response.status_code == 401
 
 
 class TestGetClinic:

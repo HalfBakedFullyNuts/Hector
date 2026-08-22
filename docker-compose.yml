@@ -1,0 +1,21 @@
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: hector-db
+    environment:
+      POSTGRES_USER: hector
+      POSTGRES_PASSWORD: hector
+      POSTGRES_DB: hector
+    ports:
+      - "5433:5432"
+    volumes:
+      - hector_pgdata:/var/lib/postgresql/data
+      - ./scripts/init-test-db.sql:/docker-entrypoint-initdb.d/init-test-db.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U hector -d hector"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  hector_pgdata:

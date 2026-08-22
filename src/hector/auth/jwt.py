@@ -6,7 +6,7 @@ user authentication and authorization.
 
 from datetime import UTC, datetime, timedelta
 from typing import Any
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from jose import JWTError, jwt
 from pydantic import BaseModel, Field
@@ -22,6 +22,7 @@ class TokenPayload(BaseModel):
     role: str = Field(..., description="User role")
     exp: int = Field(..., description="Expiration timestamp")
     iat: int = Field(..., description="Issued at timestamp")
+    jti: str = Field(default="", description="Unique token identifier")
     token_type: str = Field(..., description="Token type (access or refresh)")
 
 
@@ -79,6 +80,7 @@ def create_access_token(
         "role": role,
         "exp": int(expire.timestamp()),
         "iat": int(now.timestamp()),
+        "jti": str(uuid4()),
         "token_type": "access",
     }
 
@@ -125,6 +127,7 @@ def create_refresh_token(
         "role": role,
         "exp": int(expire.timestamp()),
         "iat": int(now.timestamp()),
+        "jti": str(uuid4()),
         "token_type": "refresh",
     }
 

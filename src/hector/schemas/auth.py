@@ -50,6 +50,13 @@ class UserRegisterRequest(BaseModel):
 
         return value
 
+    @field_validator("email")
+    @classmethod
+    def normalize_email(cls, value: EmailStr) -> EmailStr:
+        """Store emails lowercase so uniqueness is case-insensitive."""
+        assert isinstance(value, str)
+        return value.lower()
+
 
 class UserLoginRequest(BaseModel):
     """Request schema for user login."""
@@ -67,6 +74,13 @@ class UserLoginRequest(BaseModel):
         description="User's password",
         examples=["SecurePass123"],
     )
+
+    @field_validator("email")
+    @classmethod
+    def normalize_email(cls, value: EmailStr) -> EmailStr:
+        """Lowercase emails so login is case-insensitive."""
+        assert isinstance(value, str)
+        return value.lower()
 
 
 class TokenRefreshRequest(BaseModel):
