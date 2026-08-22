@@ -1,11 +1,17 @@
 """Donation response schemas."""
 
 from datetime import datetime
+from typing import TYPE_CHECKING
 from uuid import UUID
 
 from pydantic import BaseModel, Field
 
 from hector.models.donation_response import ResponseStatus
+
+if TYPE_CHECKING:
+    from hector.schemas.clinic import ClinicResponse
+    from hector.schemas.dog import DogProfileResponse
+    from hector.schemas.donation_request import DonationRequestResponse
 
 
 class DonationResponseCreate(BaseModel):
@@ -49,11 +55,9 @@ class DonationResponseResponse(BaseModel):
 class DonationResponseWithDetails(DonationResponseResponse):
     """Response schema including dog profile, owner, and request details."""
 
-    from hector.schemas.clinic import ClinicResponse
-    from hector.schemas.dog import DogProfileResponse
-    from hector.schemas.donation_request import DonationRequestResponse
-
-    dog: DogProfileResponse = Field(..., description="Dog profile details")
+    dog: "DogProfileResponse" = Field(..., description="Dog profile details")
     owner_email: str = Field(..., description="Owner's email for contact")
-    request: DonationRequestResponse | None = Field(None, description="Request details (optional)")
-    clinic: ClinicResponse | None = Field(None, description="Clinic details (optional)")
+    request: "DonationRequestResponse | None" = Field(
+        None, description="Request details (optional)"
+    )
+    clinic: "ClinicResponse | None" = Field(None, description="Clinic details (optional)")

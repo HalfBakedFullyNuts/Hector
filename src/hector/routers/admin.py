@@ -1,6 +1,7 @@
 """Admin endpoints for platform management."""
 
 from datetime import UTC, datetime
+from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -8,7 +9,7 @@ from sqlalchemy import and_, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from hector.auth.dependencies import CurrentUser, RoleChecker
+from hector.auth.dependencies import RoleChecker
 from hector.database import get_db
 from hector.models.clinic import Clinic
 from hector.models.dog_profile import DogProfile
@@ -29,6 +30,7 @@ router = APIRouter(prefix="/admin", tags=["admin"])
 
 # Admin-only role checker
 admin_only = RoleChecker([UserRole.ADMIN])
+AdminUser = Annotated[User, Depends(admin_only)]
 
 
 @router.get(
@@ -39,7 +41,7 @@ admin_only = RoleChecker([UserRole.ADMIN])
     description="List all users with filters and counts (admin only)",
 )
 async def list_all_users(
-    current_user: CurrentUser = Depends(admin_only),
+    current_user: AdminUser,
     role_filter: UserRole | None = Query(None, alias="role", description="Filter by role"),
     is_active: bool | None = Query(None, description="Filter by active status"),
     is_verified: bool | None = Query(None, description="Filter by verified status"),
@@ -132,7 +134,7 @@ async def list_all_users(
 async def toggle_user_active(
     user_id: UUID,
     request: ToggleUserActiveRequest,
-    current_user: CurrentUser = Depends(admin_only),
+    current_user: AdminUser,
     db: AsyncSession = Depends(get_db),
 ) -> dict:
     """
@@ -204,7 +206,7 @@ async def toggle_user_active(
 async def delete_user(
     user_id: UUID,
     request: DeleteUserRequest,
-    current_user: CurrentUser = Depends(admin_only),
+    current_user: AdminUser,
     db: AsyncSession = Depends(get_db),
 ) -> None:
     """
@@ -273,7 +275,7 @@ async def delete_user(
     description="View platform-wide statistics (admin only)",
 )
 async def get_platform_statistics(
-    current_user: CurrentUser = Depends(admin_only),
+    current_user: AdminUser,
     start_date: datetime | None = Query(None, description="Start date for filtering"),
     end_date: datetime | None = Query(None, description="End date for filtering"),
     db: AsyncSession = Depends(get_db),
@@ -388,7 +390,7 @@ async def get_platform_statistics(
 async def approve_clinic(
     clinic_id: UUID,
     request: ApproveClinicRequest,
-    current_user: CurrentUser = Depends(admin_only),
+    current_user: AdminUser,
     db: AsyncSession = Depends(get_db),
 ) -> Clinic:
     """
@@ -439,7 +441,7 @@ async def approve_clinic(
 async def reject_clinic(
     clinic_id: UUID,
     request: RejectClinicRequest,
-    current_user: CurrentUser = Depends(admin_only),
+    current_user: AdminUser,
     db: AsyncSession = Depends(get_db),
 ) -> None:
     """

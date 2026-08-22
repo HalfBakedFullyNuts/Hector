@@ -1,12 +1,16 @@
 """Blood donation request schemas."""
 
 from datetime import datetime, timedelta
+from typing import TYPE_CHECKING
 from uuid import UUID
 
 from pydantic import BaseModel, Field, field_validator
 
 from hector.models.dog_profile import BloodType
 from hector.models.donation_request import RequestStatus, RequestUrgency
+
+if TYPE_CHECKING:
+    from hector.schemas.clinic import ClinicResponse
 
 
 class DonationRequestCreate(BaseModel):
@@ -149,9 +153,7 @@ class DonationRequestResponse(BaseModel):
 class DonationRequestWithClinic(DonationRequestResponse):
     """Response schema including clinic details."""
 
-    from hector.schemas.clinic import ClinicResponse
-
-    clinic: ClinicResponse = Field(..., description="Clinic that made the request")
+    clinic: "ClinicResponse" = Field(..., description="Clinic that made the request")
 
 
 class DonationRequestWithResponseCount(DonationRequestResponse):

@@ -1,6 +1,7 @@
 """Blood donation request management endpoints."""
 
 from datetime import UTC, datetime
+from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -33,6 +34,7 @@ router = APIRouter(prefix="/requests", tags=["donation_requests"])
 
 # Role checker for clinic staff and admin
 clinic_staff_or_admin = RoleChecker([UserRole.CLINIC_STAFF, UserRole.ADMIN])
+StaffUser = Annotated[User, Depends(clinic_staff_or_admin)]
 
 
 @router.post(
@@ -375,12 +377,12 @@ async def cancel_donation_request(
     description="List all requests created by my clinic (clinic staff only)",
 )
 async def list_my_clinic_requests(
+    current_user: StaffUser,
     status_filter: RequestStatus | None = Query(
         None, alias="status", description="Filter by status"
     ),
     limit: int = Query(50, ge=1, le=100, description="Number of results to return"),
     offset: int = Query(0, ge=0, description="Number of results to skip"),
-    current_user: CurrentUser = Depends(clinic_staff_or_admin),
     db: AsyncSession = Depends(get_db),
 ) -> list[BloodDonationRequest]:
     """
@@ -835,10 +837,10 @@ async def complete_donation_response(
     description="List donation requests compatible with a specific dog",
 )
 async def list_compatible_requests(
+    current_user: CurrentUser,
     dog_id: UUID = Query(..., description="Dog ID to check compatibility for"),
     limit: int = Query(50, ge=1, le=100, description="Number of results to return"),
     offset: int = Query(0, ge=0, description="Number of results to skip"),
-    current_user: CurrentUser | None = None,  # Optional auth
     db: AsyncSession = Depends(get_db),
 ) -> list[BloodDonationRequest]:
     """
