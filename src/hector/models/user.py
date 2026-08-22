@@ -12,7 +12,7 @@ if TYPE_CHECKING:
     from .clinic import Clinic
 
 
-class UserRole(str, enum.Enum):
+class UserRole(enum.StrEnum):
     """User roles in the system."""
 
     CLINIC_STAFF = "clinic_staff"

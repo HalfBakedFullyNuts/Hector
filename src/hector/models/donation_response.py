@@ -15,7 +15,7 @@ if TYPE_CHECKING:
     from .user import User
 
 
-class ResponseStatus(str, enum.Enum):
+class ResponseStatus(enum.StrEnum):
     """Status of a donation response."""
 
     ACCEPTED = "ACCEPTED"

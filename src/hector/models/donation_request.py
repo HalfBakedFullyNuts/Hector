@@ -16,7 +16,7 @@ if TYPE_CHECKING:
     from .user import User
 
 
-class RequestUrgency(str, enum.Enum):
+class RequestUrgency(enum.StrEnum):
     """Urgency levels for blood donation requests."""
 
     CRITICAL = "CRITICAL"
@@ -24,7 +24,7 @@ class RequestUrgency(str, enum.Enum):
     ROUTINE = "ROUTINE"
 
 
-class RequestStatus(str, enum.Enum):
+class RequestStatus(enum.StrEnum):
     """Status of a blood donation request."""
 
     OPEN = "OPEN"

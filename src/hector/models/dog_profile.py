@@ -14,7 +14,7 @@ if TYPE_CHECKING:
     from .user import User
 
 
-class BloodType(str, enum.Enum):
+class BloodType(enum.StrEnum):
     """Canine blood types (DEA system)."""
 
     DEA_1_1_POSITIVE = "DEA_1_1_POSITIVE"
@@ -32,7 +32,7 @@ class BloodType(str, enum.Enum):
     UNKNOWN = "UNKNOWN"
 
 
-class DogSex(str, enum.Enum):
+class DogSex(enum.StrEnum):
     """Dog sex."""
 
     MALE = "MALE"
