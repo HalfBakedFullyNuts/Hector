@@ -73,6 +73,11 @@ async def test_compatible_owner_gets_match_email(
 
     staff, clinic = await _seed_world(db_session, "notif")
 
+    login = await async_client.post(
+        "/auth/login", json={"email": staff.email, "password": "SecurePass123"}
+    )
+    headers = {"Authorization": f"Bearer {login.json()['access_token']}"}
+
     create = await async_client.post(
         "/requests",
         json={
@@ -81,9 +86,7 @@ async def test_compatible_owner_gets_match_email(
             "needed_by_date": (datetime.now(UTC) + timedelta(days=3)).isoformat(),
             "blood_type_needed": "DEA_1_1_POSITIVE",
         },
-        headers={
-            "Authorization": f"Bearer {(await async_client.post('/auth/login', json={'email': staff.email, 'password': 'SecurePass123'})).json()['access_token']}"
-        },
+        headers=headers,
     )
     assert create.status_code == 201, create.text
 

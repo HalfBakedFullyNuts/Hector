@@ -11,7 +11,6 @@ from hector.auth.dependencies import CurrentUser, RoleChecker
 from hector.database import get_db
 from hector.models.clinic import Clinic
 from hector.models.clinic_staff import clinic_staff_association
-from hector.models.donation_request import BloodDonationRequest
 from hector.models.user import User, UserRole
 from hector.schemas.clinic import ClinicCreate, ClinicResponse, ClinicUpdate
 from hector.schemas.donation_request import (
