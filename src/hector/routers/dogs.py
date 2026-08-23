@@ -2,7 +2,7 @@
 
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -77,6 +77,8 @@ async def create_dog_profile(
 )
 async def list_my_dogs(
     current_user: CurrentUser,
+    limit: int = Query(20, ge=1, le=100, description="Number of results to return"),
+    offset: int = Query(0, ge=0, description="Number of results to skip"),
     db: AsyncSession = Depends(get_db),
 ) -> list[DogProfile]:
     """
@@ -84,6 +86,8 @@ async def list_my_dogs(
 
     Args:
         current_user: Current authenticated user
+        limit: Maximum number of results (T-301)
+        offset: Number of results to skip (T-301)
         db: Database session
 
     Returns:
@@ -96,6 +100,8 @@ async def list_my_dogs(
         select(DogProfile)
         .where(DogProfile.owner_id == current_user.id, DogProfile.is_active == True)  # noqa: E712
         .order_by(DogProfile.created_at.desc())
+        .limit(limit)
+        .offset(offset)
     )
     result = await db.execute(stmt)
     dogs = result.scalars().all()

@@ -157,3 +157,14 @@ class DonationRequestWithResponseCount(DonationRequestResponse):
     """Response schema including response count."""
 
     response_count: int = Field(..., description="Number of responses to this request")
+
+
+class CompatibleDonationRequest(DonationRequestWithClinic):
+    """Response schema for requests compatible with a specific dog (T-604)."""
+
+    compatibility_score: int = Field(
+        ...,
+        ge=0,
+        le=100,
+        description="Blood-type fit score (100 = universal donor)",
+    )

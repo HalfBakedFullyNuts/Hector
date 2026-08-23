@@ -18,12 +18,14 @@ from hector.models.donation_request import BloodDonationRequest, RequestStatus, 
 from hector.models.donation_response import DonationResponse, ResponseStatus
 from hector.models.user import User, UserRole
 from hector.schemas.donation_request import (
+    CompatibleDonationRequest,
     DonationRequestCreate,
     DonationRequestResponse,
     DonationRequestUpdate,
     DonationRequestWithClinic,
     DonationRequestWithResponseCount,
 )
+from hector.services.compatibility import compatibility_score
 from hector.schemas.donation_response import (
     DonationResponseCreate,
     DonationResponseResponse,
@@ -253,10 +255,10 @@ async def list_my_responses(
 
 @router.get(
     "/compatible",
-    response_model=list[DonationRequestWithClinic],
+    response_model=list[CompatibleDonationRequest],
     status_code=status.HTTP_200_OK,
     summary="List compatible donation requests",
-    description="List donation requests compatible with a specific dog",
+    description="List donation requests compatible with a specific dog (T-604)",
 )
 async def list_compatible_requests(
     current_user: CurrentUser,
@@ -264,7 +266,7 @@ async def list_compatible_requests(
     limit: int = Query(50, ge=1, le=100, description="Number of results to return"),
     offset: int = Query(0, ge=0, description="Number of results to skip"),
     db: AsyncSession = Depends(get_db),
-) -> list[BloodDonationRequest]:
+) -> list[CompatibleDonationRequest]:
     """
     List donation requests compatible with a specific dog.
 
@@ -354,7 +356,18 @@ async def list_compatible_requests(
     requests_result = await db.execute(requests_stmt)
     requests = requests_result.scalars().all()
 
-    return list(requests)
+    # Score each request against this dog's blood type (T-604)
+    scored: list[CompatibleDonationRequest] = []
+    for req in requests:
+        base = DonationRequestWithClinic.model_validate(req)
+        scored.append(
+            CompatibleDonationRequest(
+                **base.model_dump(),
+                compatibility_score=compatibility_score(dog.blood_type, req.blood_type_needed),
+            )
+        )
+
+    return scored
 
 
 @router.get(
@@ -469,9 +482,12 @@ async def get_donation_request(
             detail="Donation request not found",
         )
 
-    # Count responses (will implement when DonationResponse is available)
-    # For now, return 0
-    response_count = 0
+    # Count responses for this request (T-502)
+    count_stmt = select(func.count(DonationResponse.id)).where(
+        DonationResponse.request_id == request_id
+    )
+    count_result = await db.execute(count_stmt)
+    response_count = int(count_result.scalar() or 0)
 
     # Return as dict to include response_count
     return {
