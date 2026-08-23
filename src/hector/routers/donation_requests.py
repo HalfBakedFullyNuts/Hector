@@ -19,11 +19,11 @@ from hector.models.donation_response import DonationResponse, ResponseStatus
 from hector.models.user import User, UserRole
 from hector.schemas.donation_request import (
     CompatibleDonationRequest,
-    DonationRequestWithDistance,
     DonationRequestCreate,
     DonationRequestResponse,
     DonationRequestUpdate,
     DonationRequestWithClinic,
+    DonationRequestWithDistance,
     DonationRequestWithResponseCount,
 )
 from hector.schemas.donation_response import (

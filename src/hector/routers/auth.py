@@ -8,9 +8,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from hector.auth.dependencies import CurrentUser
 from hector.auth.jwt import create_token_pair, verify_token
 from hector.auth.password import hash_password, verify_password
+from hector.config import get_settings
 from hector.database import get_db
+from hector.models.password_reset_token import PasswordResetToken
 from hector.models.user import User
 from hector.schemas.auth import (
+    ForgotPasswordRequest,
+    ResetPasswordRequest,
     TokenRefreshRequest,
     TokenResponse,
     UserLocationUpdate,
@@ -290,3 +294,121 @@ async def update_my_location(
     await db.commit()
     await db.refresh(current_user)
     return current_user
+
+
+@router.post(
+    "/forgot-password",
+    status_code=status.HTTP_200_OK,
+    summary="Request password reset",
+    description="Send a reset link; always returns 200 to avoid account enumeration",
+)
+async def forgot_password(
+    request: ForgotPasswordRequest,
+    http_request: Request,
+    db: AsyncSession = Depends(get_db),
+) -> dict[str, str]:
+    """
+    Create a single-use reset token and email it when the account exists.
+
+    Args:
+        request: Account email
+        http_request: Raw request (client IP recorded for audit)
+        db: Database session
+
+    Returns:
+        Uniform response body regardless of account existence
+
+    Raises:
+        422: Invalid request data
+    """
+    import hashlib
+    import secrets as secrets_module
+    from datetime import UTC, datetime, timedelta
+
+    stmt = select(User).where(User.email == request.email.lower())
+    result = await db.execute(stmt)
+    user = result.scalar_one_or_none()
+
+    message = "If that email exists, a reset link has been sent."
+    if user is None:
+        return {"message": message}
+
+    raw_token = secrets_module.token_urlsafe(32)
+    token_hash = hashlib.sha256(raw_token.encode()).hexdigest()
+
+    db.add(
+        PasswordResetToken(
+            user_id=user.id,
+            token_hash=token_hash,
+            expires_at=datetime.now(UTC) + timedelta(hours=1),
+            requested_ip=http_request.client.host if http_request.client else None,
+        )
+    )
+    await db.commit()
+
+    from hector.services.email import send_email
+
+    await send_email(
+        db=db,
+        recipient=user.email,
+        subject="Reset your Hector password",
+        body_text=(f"Use this one-time token within 1 hour to reset your password:\n\n{raw_token}"),
+        template="password_reset",
+        related_type="user",
+        related_id=user.id,
+    )
+
+    # Log mode exposes the token so flows are testable without SMTP (D5).
+    settings = get_settings()
+    payload: dict[str, str] = {"message": message}
+    if not settings.smtp_host:
+        payload["dev_token"] = raw_token
+    return payload
+
+
+@router.post(
+    "/reset-password",
+    status_code=status.HTTP_200_OK,
+    summary="Reset password with token",
+    description="Consume a valid reset token and set a new password",
+)
+async def reset_password(
+    request: ResetPasswordRequest,
+    db: AsyncSession = Depends(get_db),
+) -> dict[str, str]:
+    """
+    Validate the token and update the account password.
+
+    Args:
+        request: Reset token plus new password
+        db: Database session
+
+    Returns:
+        Confirmation message
+
+    Raises:
+        400: Unknown, used, or expired token
+        422: Weak new password
+    """
+    import hashlib
+    from datetime import UTC, datetime
+
+    token_hash = hashlib.sha256(request.token.encode()).hexdigest()
+    record = await db.scalar(
+        select(PasswordResetToken).where(PasswordResetToken.token_hash == token_hash)
+    )
+
+    if record is None or record.used_at is not None or record.expires_at <= datetime.now(UTC):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid or expired reset token",
+        )
+
+    user = await db.scalar(select(User).where(User.id == record.user_id))
+    assert user is not None, "token must reference an existing user"
+
+    user.hashed_password = hash_password(request.new_password)
+    record.used_at = datetime.now(UTC)
+    await db.commit()
+
+    return {"message": "Password updated."}

@@ -147,3 +147,34 @@ class UserLocationUpdate(BaseModel):
         le=180.0,
         description="Approximate longitude",
     )
+
+
+class ForgotPasswordRequest(BaseModel):
+    """Request schema for requesting a password reset email."""
+
+    email: EmailStr = Field(
+        ...,
+        description="Account email address",
+        examples=["user@example.com"],
+    )
+
+
+class ResetPasswordRequest(BaseModel):
+    """Request schema for consuming a reset token."""
+
+    token: str = Field(
+        ...,
+        min_length=16,
+        description="Reset token received by email",
+    )
+    new_password: str = Field(
+        ...,
+        max_length=72,  # bcrypt limit
+        description="New password (8+ chars, uppercase, lowercase, digit)",
+    )
+
+    @field_validator("new_password")
+    @classmethod
+    def check_new_password(cls, value: str) -> str:
+        """Delegate to the shared password policy."""
+        return validate_password_strength(value)

@@ -65,9 +65,7 @@ async def send_email(
     return status
 
 
-async def _deliver(
-    settings: Settings, recipient: str, subject: str, body_text: str
-) -> EmailStatus:
+async def _deliver(settings: Settings, recipient: str, subject: str, body_text: str) -> EmailStatus:
     """Send over SMTP when configured; otherwise print to the service log."""
     if not settings.smtp_host:
         LOG.info("email [log-mode] to=%s subject=%r\n%s", recipient, subject, body_text)
