@@ -14,8 +14,14 @@ from hector.models.clinic_staff import clinic_staff_association
 from hector.models.donation_request import BloodDonationRequest
 from hector.models.user import User, UserRole
 from hector.schemas.clinic import ClinicCreate, ClinicResponse, ClinicUpdate
-from hector.schemas.donation_request import DonationRequestResponse
-from hector.services.clinic_requests import fetch_clinic_requests, resolve_clinic_ids
+from hector.schemas.donation_request import (
+    DonationRequestResponse,
+    DonationRequestWithCount,
+)
+from hector.services.clinic_requests import (
+    fetch_clinic_requests_with_counts,
+    resolve_clinic_ids,
+)
 
 router = APIRouter(prefix="/clinics", tags=["clinics"])
 
@@ -88,7 +94,7 @@ async def create_clinic(
 
 @router.get(
     "/my-requests",
-    response_model=list[DonationRequestResponse],
+    response_model=list[DonationRequestWithCount],
     status_code=status.HTTP_200_OK,
     summary="List my clinic's donation requests",
     description="List all requests created by my clinic, newest first (T-505)",
@@ -99,7 +105,7 @@ async def list_my_clinic_requests(
     limit: int = Query(50, ge=1, le=100, description="Number of results to return"),
     offset: int = Query(0, ge=0, description="Number of results to skip"),
     db: AsyncSession = Depends(get_db),
-) -> list[BloodDonationRequest]:
+) -> list[DonationRequestWithCount]:
     """
     List all donation requests created by the current staff member's clinic.
 
@@ -130,7 +136,13 @@ async def list_my_clinic_requests(
             detail="You must be linked to a clinic to view its requests",
         )
 
-    return await fetch_clinic_requests(db, clinic_ids, status_filter, limit, offset)
+    pairs = await fetch_clinic_requests_with_counts(db, clinic_ids, status_filter, limit, offset)
+
+    results: list[DonationRequestWithCount] = []
+    for req, cnt in pairs:
+        base = DonationRequestResponse.model_validate(req)
+        results.append(DonationRequestWithCount(**base.model_dump(), response_count=cnt))
+    return results
 
 
 @router.get(

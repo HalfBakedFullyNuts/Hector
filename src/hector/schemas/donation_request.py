@@ -177,3 +177,9 @@ class DonationRequestWithDistance(DonationRequestWithClinic):
         None,
         description="Haversine distance to the given coordinates (when provided)",
     )
+
+
+class DonationRequestWithCount(DonationRequestResponse):
+    """Response schema for staff listings including response counts."""
+
+    response_count: int = Field(0, description="Number of responses received")

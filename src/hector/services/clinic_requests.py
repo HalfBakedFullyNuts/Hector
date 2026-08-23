@@ -2,7 +2,7 @@
 
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -42,3 +42,39 @@ async def fetch_clinic_requests(
         stmt = stmt.where(BloodDonationRequest.status == status_filter)
     result = await db.execute(stmt)
     return list(result.scalars().all())
+
+
+async def fetch_clinic_requests_with_counts(
+    db: AsyncSession,
+    clinic_ids: list[UUID],
+    status_filter: str | None = None,
+    limit: int = 50,
+    offset: int = 0,
+) -> list[tuple[BloodDonationRequest, int]]:
+    """Fetch clinic requests with response counts in one grouped query."""
+    assert limit >= 1 and offset >= 0
+    from hector.models.donation_response import DonationResponse
+
+    count_subq = (
+        select(
+            DonationResponse.request_id,
+            func.count(DonationResponse.id).label("response_count"),
+        )
+        .group_by(DonationResponse.request_id)
+        .subquery()
+    )
+
+    stmt = (
+        select(BloodDonationRequest, func.coalesce(count_subq.c.response_count, 0))
+        .outerjoin(count_subq, BloodDonationRequest.id == count_subq.c.request_id)
+        .where(BloodDonationRequest.clinic_id.in_(clinic_ids))
+        .order_by(BloodDonationRequest.created_at.desc())
+        .limit(limit)
+        .offset(offset)
+        .options(selectinload(BloodDonationRequest.clinic))
+    )
+    if status_filter is not None:
+        stmt = stmt.where(BloodDonationRequest.status == status_filter)
+
+    rows = (await db.execute(stmt)).all()
+    return [(row[0], int(row[1])) for row in rows]
