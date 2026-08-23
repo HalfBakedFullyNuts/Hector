@@ -1,7 +1,5 @@
 """Tests for the audit trail (T-701/T-702/T-704)."""
 
-from datetime import UTC, datetime
-
 from httpx import AsyncClient
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -43,11 +41,7 @@ async def test_toggle_active_writes_audit_log(
     assert response.status_code == 200
 
     entries = (
-        (
-            await db_session.execute(
-                select(AuditLog).where(AuditLog.action == "user.toggle_active")
-            )
-        )
+        (await db_session.execute(select(AuditLog).where(AuditLog.action == "user.toggle_active")))
         .scalars()
         .all()
     )

@@ -22,9 +22,7 @@ async def _register(client: AsyncClient, email: str, role: str) -> str:
         "/auth/register", json={"email": email, "password": "SecurePass123", "role": role}
     )
     assert reg.status_code == 201, reg.text
-    login = await client.post(
-        "/auth/login", json={"email": email, "password": "SecurePass123"}
-    )
+    login = await client.post("/auth/login", json={"email": email, "password": "SecurePass123"})
     assert login.status_code == 200
     return str(login.json()["access_token"])
 
@@ -46,7 +44,9 @@ async def _seed_admin(db_session: AsyncSession, email: str) -> User:
     return admin
 
 
-async def _approved_clinic_token(client: AsyncClient, db_session: AsyncSession, tag: str) -> tuple[str, dict]:
+async def _approved_clinic_token(
+    client: AsyncClient, db_session: AsyncSession, tag: str
+) -> tuple[str, dict]:
     """Register staff, create clinic, approve it via admin API."""
     staff_token = await _register(client, f"{tag}-staff@clinic.com", "clinic_staff")
     create = await client.post(
@@ -89,9 +89,7 @@ def _request_payload(**overrides: object) -> dict:
     return base
 
 
-async def test_full_request_lifecycle(
-    async_client: AsyncClient, db_session: AsyncSession
-) -> None:
+async def test_full_request_lifecycle(async_client: AsyncClient, db_session: AsyncSession) -> None:
     """Create → respond → list responses → complete → eligibility lockout."""
     staff_token, _clinic = await _approved_clinic_token(async_client, db_session, "life")
 
@@ -157,9 +155,7 @@ async def test_full_request_lifecycle(
     assert steal.status_code == 403
 
     # --- clinic lists responses ---
-    listed = await async_client.get(
-        f"/requests/{request_id}/responses", headers=_auth(staff_token)
-    )
+    listed = await async_client.get(f"/requests/{request_id}/responses", headers=_auth(staff_token))
     assert listed.status_code == 200
     entries = listed.json()
     assert len(entries) == 1

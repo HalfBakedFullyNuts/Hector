@@ -86,8 +86,6 @@ async def create_clinic(
     return new_clinic
 
 
-
-
 @router.get(
     "/my-requests",
     response_model=list[DonationRequestResponse],
@@ -298,5 +296,3 @@ async def list_clinics(
     clinics = result.scalars().all()
 
     return list(clinics)
-
-
