@@ -5,7 +5,7 @@ from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import and_, func, select
+from sqlalchemy import and_, case, func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -106,6 +106,258 @@ async def create_donation_request(
 
 
 @router.get(
+    "/my-clinic",
+    response_model=list[DonationRequestResponse],
+    status_code=status.HTTP_200_OK,
+    summary="List my clinic's requests",
+    description="List all requests created by my clinic (clinic staff only)",
+)
+async def list_my_clinic_requests(
+    current_user: StaffUser,
+    status_filter: RequestStatus | None = Query(
+        None, alias="status", description="Filter by status"
+    ),
+    limit: int = Query(50, ge=1, le=100, description="Number of results to return"),
+    offset: int = Query(0, ge=0, description="Number of results to skip"),
+    db: AsyncSession = Depends(get_db),
+) -> list[BloodDonationRequest]:
+    """
+    List all donation requests created by the current user's clinic.
+
+    Args:
+        status_filter: Optional status filter
+        limit: Maximum number of results
+        offset: Number of results to skip
+        current_user: Current authenticated user (must be clinic staff)
+        db: Database session
+
+    Returns:
+        List of donation requests created by user's clinic
+
+    Raises:
+        401: Invalid or expired token
+        403: User is not clinic staff or not linked to a clinic
+    """
+    # Get user's clinics
+
+    stmt = select(User).where(User.id == current_user.id).options(selectinload(User.clinics))
+    result = await db.execute(stmt)
+    user_with_clinics = result.scalar_one()
+
+    if not user_with_clinics.clinics:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You must be linked to a clinic to view clinic requests",
+        )
+
+    # Get clinic IDs
+    clinic_ids = [clinic.id for clinic in user_with_clinics.clinics]
+
+    # Build query for requests
+    requests_stmt = select(BloodDonationRequest).where(
+        BloodDonationRequest.clinic_id.in_(clinic_ids)
+    )
+
+    # Apply status filter if provided
+    if status_filter:
+        requests_stmt = requests_stmt.where(BloodDonationRequest.status == status_filter)
+
+    # Sort by created_at descending
+    requests_stmt = requests_stmt.order_by(BloodDonationRequest.created_at.desc())
+
+    # Apply pagination
+    requests_stmt = requests_stmt.limit(limit).offset(offset)
+
+    requests_result = await db.execute(requests_stmt)
+    requests = requests_result.scalars().all()
+
+    return list(requests)
+
+
+# ============================================================================
+# DONATION RESPONSE ENDPOINTS (Phase 6)
+# ============================================================================
+
+
+@router.get(
+    "/my-responses",
+    response_model=list[DonationResponseWithDetails],
+    status_code=status.HTTP_200_OK,
+    summary="List my dogs' responses",
+    description="List all responses for authenticated user's dogs",
+    tags=["donation_responses"],
+)
+async def list_my_responses(
+    current_user: CurrentUser,
+    status_filter: ResponseStatus | None = Query(
+        None, alias="status", description="Filter by status"
+    ),
+    limit: int = Query(50, ge=1, le=100, description="Number of results to return"),
+    offset: int = Query(0, ge=0, description="Number of results to skip"),
+    db: AsyncSession = Depends(get_db),
+) -> list[dict]:
+    """
+    List all donation responses for the current user's dogs.
+
+    Args:
+        status_filter: Optional status filter
+        limit: Maximum number of results
+        offset: Number of results to skip
+        current_user: Current authenticated user
+        db: Database session
+
+    Returns:
+        List of responses with request and clinic details
+
+    Raises:
+        401: Invalid or expired token
+    """
+    # Build query for responses
+    responses_stmt = (
+        select(DonationResponse)
+        .where(DonationResponse.owner_id == current_user.id)
+        .options(
+            selectinload(DonationResponse.dog),
+            selectinload(DonationResponse.request).selectinload(BloodDonationRequest.clinic),
+        )
+    )
+
+    # Apply status filter if provided
+    if status_filter:
+        responses_stmt = responses_stmt.where(DonationResponse.status == status_filter)
+
+    # Sort by created_at descending
+    responses_stmt = responses_stmt.order_by(DonationResponse.created_at.desc())
+
+    # Apply pagination
+    responses_stmt = responses_stmt.limit(limit).offset(offset)
+
+    responses_result = await db.execute(responses_stmt)
+    responses = responses_result.scalars().all()
+
+    # Format response with details
+    result_list = []
+    for resp in responses:
+        result_list.append(
+            {
+                **DonationResponseResponse.model_validate(resp).model_dump(),
+                "dog": resp.dog,
+                "owner_email": current_user.email,
+                "request": resp.request,
+                "clinic": resp.request.clinic if resp.request else None,
+            }
+        )
+
+    return result_list
+
+
+@router.get(
+    "/compatible",
+    response_model=list[DonationRequestWithClinic],
+    status_code=status.HTTP_200_OK,
+    summary="List compatible donation requests",
+    description="List donation requests compatible with a specific dog",
+)
+async def list_compatible_requests(
+    current_user: CurrentUser,
+    dog_id: UUID = Query(..., description="Dog ID to check compatibility for"),
+    limit: int = Query(50, ge=1, le=100, description="Number of results to return"),
+    offset: int = Query(0, ge=0, description="Number of results to skip"),
+    db: AsyncSession = Depends(get_db),
+) -> list[BloodDonationRequest]:
+    """
+    List donation requests compatible with a specific dog.
+
+    Args:
+        dog_id: Dog UUID to check compatibility for
+        limit: Maximum number of results
+        offset: Number of results to skip
+        current_user: Optional authenticated user
+        db: Database session
+
+    Returns:
+        List of compatible donation requests with clinic details
+
+    Raises:
+        401: Missing or invalid token
+        403: Dog does not belong to the authenticated user
+        404: Dog not found
+    """
+    # Get the dog profile
+    stmt = select(DogProfile).where(DogProfile.id == dog_id)
+    result = await db.execute(stmt)
+    dog = result.scalar_one_or_none()
+
+    if not dog:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Dog profile not found",
+        )
+
+    # Ownership check: never leak eligibility data for other users' dogs
+    if dog.owner_id != current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="This dog does not belong to you",
+        )
+
+    # Check eligibility
+    if not dog.is_eligible_for_donation:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Dog is not eligible for donation (check weight, age, and last donation date)",
+        )
+
+    # Build query for OPEN requests with clinic relationship
+    requests_stmt = (
+        select(BloodDonationRequest)
+        .where(BloodDonationRequest.status == RequestStatus.OPEN)
+        .options(selectinload(BloodDonationRequest.clinic))
+    )
+
+    # Apply blood type compatibility filter
+    if dog.blood_type:
+        # Blood type compatibility rules for canines:
+        # - DEA 1.1 negative: universal donor (can donate to all)
+        # - DEA 1.1 positive: can only donate to DEA 1.1 positive
+        # - If request has no blood_type_needed (None), show all
+        if dog.blood_type == BloodType.DEA_1_1_NEGATIVE:
+            # Universal donor - compatible with all requests
+            pass
+        elif dog.blood_type == BloodType.DEA_1_1_POSITIVE:
+            # Can only donate to DEA 1.1 positive or requests with no blood type specified
+            requests_stmt = requests_stmt.where(
+                (BloodDonationRequest.blood_type_needed == BloodType.DEA_1_1_POSITIVE)
+                | (BloodDonationRequest.blood_type_needed.is_(None))
+            )
+        else:
+            # For other blood types, match same type or no type specified
+            requests_stmt = requests_stmt.where(
+                (BloodDonationRequest.blood_type_needed == dog.blood_type)
+                | (BloodDonationRequest.blood_type_needed.is_(None))
+            )
+
+    # Sort by urgency (CRITICAL first) and then by created_at
+    requests_stmt = requests_stmt.order_by(
+        case(
+            (BloodDonationRequest.urgency == RequestUrgency.CRITICAL, 0),
+            (BloodDonationRequest.urgency == RequestUrgency.URGENT, 1),
+            (BloodDonationRequest.urgency == RequestUrgency.ROUTINE, 2),
+            else_=3,
+        ),
+        BloodDonationRequest.created_at,
+    )
+
+    # Apply pagination
+    requests_stmt = requests_stmt.limit(limit).offset(offset)
+
+    requests_result = await db.execute(requests_stmt)
+    requests = requests_result.scalars().all()
+
+    return list(requests)
+
+
+@router.get(
     "",
     response_model=list[DonationRequestWithClinic],
     status_code=status.HTTP_200_OK,
@@ -160,10 +412,11 @@ async def list_donation_requests(
     # Sort by urgency (CRITICAL first) and then by created_at
     # Custom sorting using CASE statement
     stmt = stmt.order_by(
-        func.case(
+        case(
             (BloodDonationRequest.urgency == RequestUrgency.CRITICAL, 0),
             (BloodDonationRequest.urgency == RequestUrgency.URGENT, 1),
             (BloodDonationRequest.urgency == RequestUrgency.ROUTINE, 2),
+            else_=3,
         ),
         BloodDonationRequest.created_at,
     )
@@ -367,80 +620,6 @@ async def cancel_donation_request(
     await db.refresh(donation_request)
 
     return donation_request
-
-
-@router.get(
-    "/my-clinic",
-    response_model=list[DonationRequestResponse],
-    status_code=status.HTTP_200_OK,
-    summary="List my clinic's requests",
-    description="List all requests created by my clinic (clinic staff only)",
-)
-async def list_my_clinic_requests(
-    current_user: StaffUser,
-    status_filter: RequestStatus | None = Query(
-        None, alias="status", description="Filter by status"
-    ),
-    limit: int = Query(50, ge=1, le=100, description="Number of results to return"),
-    offset: int = Query(0, ge=0, description="Number of results to skip"),
-    db: AsyncSession = Depends(get_db),
-) -> list[BloodDonationRequest]:
-    """
-    List all donation requests created by the current user's clinic.
-
-    Args:
-        status_filter: Optional status filter
-        limit: Maximum number of results
-        offset: Number of results to skip
-        current_user: Current authenticated user (must be clinic staff)
-        db: Database session
-
-    Returns:
-        List of donation requests created by user's clinic
-
-    Raises:
-        401: Invalid or expired token
-        403: User is not clinic staff or not linked to a clinic
-    """
-    # Get user's clinics
-
-    stmt = select(User).where(User.id == current_user.id).options(selectinload(User.clinics))
-    result = await db.execute(stmt)
-    user_with_clinics = result.scalar_one()
-
-    if not user_with_clinics.clinics:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="You must be linked to a clinic to view clinic requests",
-        )
-
-    # Get clinic IDs
-    clinic_ids = [clinic.id for clinic in user_with_clinics.clinics]
-
-    # Build query for requests
-    requests_stmt = select(BloodDonationRequest).where(
-        BloodDonationRequest.clinic_id.in_(clinic_ids)
-    )
-
-    # Apply status filter if provided
-    if status_filter:
-        requests_stmt = requests_stmt.where(BloodDonationRequest.status == status_filter)
-
-    # Sort by created_at descending
-    requests_stmt = requests_stmt.order_by(BloodDonationRequest.created_at.desc())
-
-    # Apply pagination
-    requests_stmt = requests_stmt.limit(limit).offset(offset)
-
-    requests_result = await db.execute(requests_stmt)
-    requests = requests_result.scalars().all()
-
-    return list(requests)
-
-
-# ============================================================================
-# DONATION RESPONSE ENDPOINTS (Phase 6)
-# ============================================================================
 
 
 @router.post(
@@ -675,78 +854,6 @@ async def list_request_responses(
     return result_list
 
 
-@router.get(
-    "/my-responses",
-    response_model=list[DonationResponseWithDetails],
-    status_code=status.HTTP_200_OK,
-    summary="List my dogs' responses",
-    description="List all responses for authenticated user's dogs",
-    tags=["donation_responses"],
-)
-async def list_my_responses(
-    current_user: CurrentUser,
-    status_filter: ResponseStatus | None = Query(
-        None, alias="status", description="Filter by status"
-    ),
-    limit: int = Query(50, ge=1, le=100, description="Number of results to return"),
-    offset: int = Query(0, ge=0, description="Number of results to skip"),
-    db: AsyncSession = Depends(get_db),
-) -> list[dict]:
-    """
-    List all donation responses for the current user's dogs.
-
-    Args:
-        status_filter: Optional status filter
-        limit: Maximum number of results
-        offset: Number of results to skip
-        current_user: Current authenticated user
-        db: Database session
-
-    Returns:
-        List of responses with request and clinic details
-
-    Raises:
-        401: Invalid or expired token
-    """
-    # Build query for responses
-    responses_stmt = (
-        select(DonationResponse)
-        .where(DonationResponse.owner_id == current_user.id)
-        .options(
-            selectinload(DonationResponse.dog),
-            selectinload(DonationResponse.request).selectinload(BloodDonationRequest.clinic),
-        )
-    )
-
-    # Apply status filter if provided
-    if status_filter:
-        responses_stmt = responses_stmt.where(DonationResponse.status == status_filter)
-
-    # Sort by created_at descending
-    responses_stmt = responses_stmt.order_by(DonationResponse.created_at.desc())
-
-    # Apply pagination
-    responses_stmt = responses_stmt.limit(limit).offset(offset)
-
-    responses_result = await db.execute(responses_stmt)
-    responses = responses_result.scalars().all()
-
-    # Format response with details
-    result_list = []
-    for resp in responses:
-        result_list.append(
-            {
-                **DonationResponseResponse.model_validate(resp).model_dump(),
-                "dog": resp.dog,
-                "owner_email": current_user.email,
-                "request": resp.request,
-                "clinic": resp.request.clinic if resp.request else None,
-            }
-        )
-
-    return result_list
-
-
 @router.post(
     "/responses/{response_id}/complete",
     response_model=DonationResponseResponse,
@@ -827,99 +934,3 @@ async def complete_donation_response(
     await db.refresh(donation_response)
 
     return donation_response
-
-
-@router.get(
-    "/compatible",
-    response_model=list[DonationRequestWithClinic],
-    status_code=status.HTTP_200_OK,
-    summary="List compatible donation requests",
-    description="List donation requests compatible with a specific dog",
-)
-async def list_compatible_requests(
-    current_user: CurrentUser,
-    dog_id: UUID = Query(..., description="Dog ID to check compatibility for"),
-    limit: int = Query(50, ge=1, le=100, description="Number of results to return"),
-    offset: int = Query(0, ge=0, description="Number of results to skip"),
-    db: AsyncSession = Depends(get_db),
-) -> list[BloodDonationRequest]:
-    """
-    List donation requests compatible with a specific dog.
-
-    Args:
-        dog_id: Dog UUID to check compatibility for
-        limit: Maximum number of results
-        offset: Number of results to skip
-        current_user: Optional authenticated user
-        db: Database session
-
-    Returns:
-        List of compatible donation requests with clinic details
-
-    Raises:
-        404: Dog not found
-    """
-    # Get the dog profile
-    stmt = select(DogProfile).where(DogProfile.id == dog_id)
-    result = await db.execute(stmt)
-    dog = result.scalar_one_or_none()
-
-    if not dog:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Dog profile not found",
-        )
-
-    # Check eligibility
-    if not dog.is_eligible_for_donation:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Dog is not eligible for donation (check weight, age, and last donation date)",
-        )
-
-    # Build query for OPEN requests with clinic relationship
-    requests_stmt = (
-        select(BloodDonationRequest)
-        .where(BloodDonationRequest.status == RequestStatus.OPEN)
-        .options(selectinload(BloodDonationRequest.clinic))
-    )
-
-    # Apply blood type compatibility filter
-    if dog.blood_type:
-        # Blood type compatibility rules for canines:
-        # - DEA 1.1 negative: universal donor (can donate to all)
-        # - DEA 1.1 positive: can only donate to DEA 1.1 positive
-        # - If request has no blood_type_needed (None), show all
-        if dog.blood_type == BloodType.DEA_1_1_NEGATIVE:
-            # Universal donor - compatible with all requests
-            pass
-        elif dog.blood_type == BloodType.DEA_1_1_POSITIVE:
-            # Can only donate to DEA 1.1 positive or requests with no blood type specified
-            requests_stmt = requests_stmt.where(
-                (BloodDonationRequest.blood_type_needed == BloodType.DEA_1_1_POSITIVE)
-                | (BloodDonationRequest.blood_type_needed.is_(None))
-            )
-        else:
-            # For other blood types, match same type or no type specified
-            requests_stmt = requests_stmt.where(
-                (BloodDonationRequest.blood_type_needed == dog.blood_type)
-                | (BloodDonationRequest.blood_type_needed.is_(None))
-            )
-
-    # Sort by urgency (CRITICAL first) and then by created_at
-    requests_stmt = requests_stmt.order_by(
-        func.case(
-            (BloodDonationRequest.urgency == RequestUrgency.CRITICAL, 0),
-            (BloodDonationRequest.urgency == RequestUrgency.URGENT, 1),
-            (BloodDonationRequest.urgency == RequestUrgency.ROUTINE, 2),
-        ),
-        BloodDonationRequest.created_at,
-    )
-
-    # Apply pagination
-    requests_stmt = requests_stmt.limit(limit).offset(offset)
-
-    requests_result = await db.execute(requests_stmt)
-    requests = requests_result.scalars().all()
-
-    return list(requests)
