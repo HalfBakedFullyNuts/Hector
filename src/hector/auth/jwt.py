@@ -209,26 +209,3 @@ def verify_token(token: str, expected_type: str = "access") -> TokenPayload | No
         return None
     except Exception:
         return None
-
-
-def decode_token_unsafe(token: str) -> dict[str, Any] | None:
-    """
-    Decode a token without verification (for debugging only).
-
-    WARNING: This does not validate the signature or expiration.
-    Never use for authentication decisions in production.
-
-    Args:
-        token: JWT token to decode
-
-    Returns:
-        Decoded payload dict or None if malformed
-    """
-    if not token:
-        return None
-
-    try:
-        payload: dict[str, Any] = jwt.get_unverified_claims(token)
-        return payload
-    except Exception:
-        return None

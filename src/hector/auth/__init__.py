@@ -22,7 +22,6 @@ from .jwt import (
     create_access_token,
     create_refresh_token,
     create_token_pair,
-    decode_token_unsafe,
     verify_token,
 )
 from .password import hash_password, needs_rehash, verify_password
@@ -35,7 +34,6 @@ __all__ = [
     "create_refresh_token",
     "create_token_pair",
     "verify_token",
-    "decode_token_unsafe",
     "TokenPayload",
     "TokenPair",
     "get_current_user",

@@ -9,7 +9,6 @@ from hector.auth.jwt import (
     create_access_token,
     create_refresh_token,
     create_token_pair,
-    decode_token_unsafe,
     verify_token,
 )
 from hector.models.user import UserRole
@@ -189,43 +188,12 @@ def test_token_timestamps_are_valid():
     assert payload.exp - payload.iat >= 15 * 60  # At least 15 minutes
 
 
-def test_decode_token_unsafe_returns_payload():
-    """Test that decode_token_unsafe decodes without verification."""
-    user_id = uuid4()
-    email = "unsafe@example.com"
-    role = UserRole.ADMIN.value
+def test_unsafe_decoder_is_gone():
+    """The unverified decode helper must stay removed (design B6)."""
+    import hector.auth.jwt as jwt_module
 
-    token = create_access_token(user_id, email, role)
-    payload = decode_token_unsafe(token)
+    assert not hasattr(jwt_module, "decode_token_unsafe")
 
-    assert payload is not None
-    assert payload["sub"] == str(user_id)
-    assert payload["email"] == email
-    assert payload["role"] == role
-
-
-def test_decode_token_unsafe_works_on_expired_token():
-    """Test that decode_token_unsafe decodes expired tokens."""
-    user_id = uuid4()
-    email = "expired@example.com"
-    role = UserRole.DOG_OWNER.value
-
-    # Create expired token
-    token = create_access_token(user_id, email, role, timedelta(seconds=-1))
-
-    # verify_token should reject it
-    assert verify_token(token, "access") is None
-
-    # decode_token_unsafe should still decode it
-    payload = decode_token_unsafe(token)
-    assert payload is not None
-    assert payload["sub"] == str(user_id)
-
-
-def test_decode_token_unsafe_returns_none_for_invalid():
-    """Test that decode_token_unsafe returns None for invalid tokens."""
-    assert decode_token_unsafe("") is None
-    assert decode_token_unsafe("not-a-token") is None
 
 
 def test_different_users_get_different_tokens():
