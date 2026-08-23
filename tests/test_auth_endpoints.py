@@ -214,6 +214,21 @@ class TestUserRegistration:
 
         assert response.status_code == 422
 
+    async def test_register_admin_role_forbidden(
+        self,
+        client: AsyncClient,
+    ) -> None:
+        """Admin role cannot be self-registered (bootstrap via CLI only)."""
+        payload = {
+            "email": "selfadmin@example.com",
+            "password": "SecurePass123",
+            "role": "admin",
+        }
+
+        response = await client.post("/auth/register", json=payload)
+
+        assert response.status_code == 422
+
     async def test_register_missing_email_returns_422(
         self,
         client: AsyncClient,

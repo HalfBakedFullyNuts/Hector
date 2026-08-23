@@ -5,7 +5,8 @@ import uvicorn
 from .config import get_settings
 
 
-def main() -> None:
+def run_server() -> None:
+    """Start the uvicorn server with current settings."""
     settings = get_settings()
     uvicorn.run(
         "hector.app:create_app",
@@ -15,6 +16,11 @@ def main() -> None:
         reload=True,
         log_level=settings.log_level.lower(),
     )
+
+
+def main() -> None:
+    """Backwards-compatible entry point."""
+    run_server()
 
 
 if __name__ == "__main__":

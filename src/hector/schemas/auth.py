@@ -9,6 +9,24 @@ from pydantic import BaseModel, EmailStr, Field, field_validator
 from hector.models.user import UserRole
 
 
+def validate_password_strength(value: str) -> str:
+    """Enforce 8+ chars with uppercase, lowercase, and digit."""
+    assert isinstance(value, str)
+    if len(value) < 8:
+        raise ValueError("Password must be at least 8 characters long")
+
+    if not re.search(r"[A-Z]", value):
+        raise ValueError("Password must contain at least one uppercase letter")
+
+    if not re.search(r"[a-z]", value):
+        raise ValueError("Password must contain at least one lowercase letter")
+
+    if not re.search(r"\d", value):
+        raise ValueError("Password must contain at least one digit")
+
+    return value
+
+
 class UserRegisterRequest(BaseModel):
     """Request schema for user registration."""
 
@@ -34,21 +52,9 @@ class UserRegisterRequest(BaseModel):
 
     @field_validator("password")
     @classmethod
-    def validate_password_strength(cls, value: str) -> str:
-        """Validate password meets security requirements."""
-        if len(value) < 8:
-            raise ValueError("Password must be at least 8 characters long")
-
-        if not re.search(r"[A-Z]", value):
-            raise ValueError("Password must contain at least one uppercase letter")
-
-        if not re.search(r"[a-z]", value):
-            raise ValueError("Password must contain at least one lowercase letter")
-
-        if not re.search(r"\d", value):
-            raise ValueError("Password must contain at least one digit")
-
-        return value
+    def check_password_strength(cls, value: str) -> str:
+        """Delegate to the shared password policy."""
+        return validate_password_strength(value)
 
     @field_validator("email")
     @classmethod
@@ -56,6 +62,15 @@ class UserRegisterRequest(BaseModel):
         """Store emails lowercase so uniqueness is case-insensitive."""
         assert isinstance(value, str)
         return value.lower()
+
+    @field_validator("role")
+    @classmethod
+    def forbid_admin_self_registration(cls, value: UserRole) -> UserRole:
+        """Admins are only created via the create-admin CLI (design D4)."""
+        assert isinstance(value, UserRole)
+        if value is UserRole.ADMIN:
+            raise ValueError("ADMIN accounts cannot be self-registered")
+        return value
 
 
 class UserLoginRequest(BaseModel):
