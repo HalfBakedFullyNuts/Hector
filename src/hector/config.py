@@ -106,6 +106,25 @@ class Settings(BaseSettings):
         description="Allowed headers for CORS requests",
     )
 
+    # Email (T-1000): empty smtp_host selects log mode
+    smtp_host: str | None = Field(
+        None,
+        description="SMTP hostname; when unset emails are logged instead of sent",
+    )
+    smtp_port: int = Field(
+        587,
+        ge=1,
+        le=65535,
+        description="SMTP port",
+    )
+    smtp_user: str | None = Field(None, description="SMTP username")
+    smtp_password: str | None = Field(None, description="SMTP password")
+    smtp_from: str = Field(
+        "no-reply@hector.local",
+        description="From address for outgoing emails",
+    )
+    smtp_start_tls: bool = Field(True, description="Use STARTTLS when connecting")
+
 
 @lru_cache(maxsize=1)
 def get_settings() -> Settings:
