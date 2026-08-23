@@ -41,8 +41,14 @@ def validate_photo(content_type: str | None, data: bytes) -> Image.Image:
     return image
 
 
-def store_photo(media_dir: Path, dog_id, dog_photo_url: str | None, image: Image.Image) -> str:
+def store_photo(
+    media_dir: Path,
+    dog_id: object,
+    dog_photo_url: str | None,
+    image: Image.Image,
+) -> str:
     """Write original + thumbnail, replacing any previous photo; returns URL."""
+    assert dog_id is not None
     dog_dir = media_dir / "dogs" / str(dog_id)
     dog_dir.mkdir(parents=True, exist_ok=True)
 

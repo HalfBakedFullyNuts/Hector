@@ -403,7 +403,7 @@ async def list_donation_requests(
     limit: int = Query(50, ge=1, le=100, description="Number of results to return"),
     offset: int = Query(0, ge=0, description="Number of results to skip"),
     db: AsyncSession = Depends(get_db),
-) -> list[BloodDonationRequest]:
+) -> list[DonationRequestWithDistance]:
     """
     List all donation requests with optional filtering.
 
@@ -435,11 +435,9 @@ async def list_donation_requests(
     if urgency:
         stmt = stmt.where(BloodDonationRequest.urgency == urgency)
 
-    use_geo = lat is not None and lng is not None
-
     if city:
         stmt = stmt.join(Clinic).where(Clinic.city == city)
-    elif use_geo and max_distance_km is not None:
+    elif lat is not None and lng is not None and max_distance_km is not None:
         # SQL bounding-box prefilter; exact Haversine applied below (T-1004)
         lat_min, lat_max, lng_min, lng_max = bounding_box(lat, lng, max_distance_km)
         stmt = stmt.join(Clinic).where(
@@ -463,7 +461,7 @@ async def list_donation_requests(
         BloodDonationRequest.created_at,
     )
 
-    if not use_geo:
+    if lat is None or lng is None:
         stmt = stmt.limit(limit).offset(offset)
         result = await db.execute(stmt)
         return [DonationRequestWithDistance.model_validate(r) for r in result.scalars().all()]
@@ -473,7 +471,7 @@ async def list_donation_requests(
     result = await db.execute(stmt)
     from hector.geo_compat import build_geo_page
 
-    return build_geo_page(result.scalars().all(), lat or 0.0, lng or 0.0, limit, offset)
+    return build_geo_page(list(result.scalars().all()), lat, lng, limit, offset)
 
 
 @router.get(

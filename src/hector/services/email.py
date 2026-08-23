@@ -13,7 +13,7 @@ from uuid import UUID
 
 import aiosmtplib
 
-from hector.config import get_settings
+from hector.config import Settings, get_settings
 from hector.models.email_log import EmailLog
 
 if TYPE_CHECKING:
@@ -65,7 +65,9 @@ async def send_email(
     return status
 
 
-async def _deliver(settings, recipient: str, subject: str, body_text: str) -> EmailStatus:
+async def _deliver(
+    settings: Settings, recipient: str, subject: str, body_text: str
+) -> EmailStatus:
     """Send over SMTP when configured; otherwise print to the service log."""
     if not settings.smtp_host:
         LOG.info("email [log-mode] to=%s subject=%r\n%s", recipient, subject, body_text)

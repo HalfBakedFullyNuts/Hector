@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from hector.models.clinic import Clinic
 from hector.models.dog_profile import DogProfile
 from hector.models.donation_request import BloodDonationRequest
+from hector.models.donation_response import DonationResponse
 from hector.models.email_log import EmailLog
 from hector.models.user import User
 from hector.services.compatibility import compatibility_score
@@ -87,14 +88,18 @@ async def notify_compatible_owners(db: AsyncSession, request: BloodDonationReque
     return sent
 
 
-async def notify_clinic_of_response(db: AsyncSession, response) -> None:
+async def notify_clinic_of_response(
+    db: AsyncSession,
+    response: DonationResponse,
+) -> None:
     """Tell the requesting clinic that a donor accepted (T-1003)."""
     request = await db.scalar(
         select(BloodDonationRequest).where(BloodDonationRequest.id == response.request_id)
     )
+    assert request is not None, "response must reference a request"
     clinic = await db.scalar(select(Clinic).where(Clinic.id == request.clinic_id))
     dog = await db.scalar(select(DogProfile).where(DogProfile.id == response.dog_id))
-    assert request is not None and clinic is not None and dog is not None
+    assert clinic is not None and dog is not None, "related entities must exist"
 
     body = (
         "Good news!\n\nA dog owner just offered their dog "
