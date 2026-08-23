@@ -126,5 +126,24 @@ class UserResponse(BaseModel):
     role: UserRole = Field(..., description="User's role in the system")
     is_active: bool = Field(..., description="Whether the user account is active")
     is_verified: bool = Field(..., description="Whether the email has been verified")
+    latitude: float | None = Field(None, description="Stored latitude (T-1004)")
+    longitude: float | None = Field(None, description="Stored longitude (T-1004)")
     created_at: datetime = Field(..., description="User creation timestamp")
     updated_at: datetime = Field(..., description="Last update timestamp")
+
+
+class UserLocationUpdate(BaseModel):
+    """Request schema for updating a user's approximate location (T-1004)."""
+
+    latitude: float | None = Field(
+        None,
+        ge=-90.0,
+        le=90.0,
+        description="Approximate latitude",
+    )
+    longitude: float | None = Field(
+        None,
+        ge=-180.0,
+        le=180.0,
+        description="Approximate longitude",
+    )

@@ -168,3 +168,12 @@ class CompatibleDonationRequest(DonationRequestWithClinic):
         le=100,
         description="Blood-type fit score (100 = universal donor)",
     )
+
+
+class DonationRequestWithDistance(DonationRequestWithClinic):
+    """Response schema adding optional clinic distance (T-1004)."""
+
+    distance_km: float | None = Field(
+        None,
+        description="Haversine distance to the given coordinates (when provided)",
+    )

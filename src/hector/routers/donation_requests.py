@@ -19,6 +19,7 @@ from hector.models.donation_response import DonationResponse, ResponseStatus
 from hector.models.user import User, UserRole
 from hector.schemas.donation_request import (
     CompatibleDonationRequest,
+    DonationRequestWithDistance,
     DonationRequestCreate,
     DonationRequestResponse,
     DonationRequestUpdate,
@@ -31,6 +32,7 @@ from hector.schemas.donation_response import (
     DonationResponseWithDetails,
 )
 from hector.services.compatibility import compatibility_score
+from hector.services.geo import bounding_box
 from hector.services.notifications import notify_clinic_of_response, notify_compatible_owners
 
 router = APIRouter(prefix="/requests", tags=["donation_requests"])
@@ -381,7 +383,7 @@ async def list_compatible_requests(
 
 @router.get(
     "",
-    response_model=list[DonationRequestWithClinic],
+    response_model=list[DonationRequestWithDistance],
     status_code=status.HTTP_200_OK,
     summary="List all open donation requests",
     description="List all open donation requests with optional filters",
@@ -393,6 +395,11 @@ async def list_donation_requests(
     blood_type: BloodType | None = Query(None, description="Filter by blood type needed"),
     urgency: RequestUrgency | None = Query(None, description="Filter by urgency level"),
     city: str | None = Query(None, description="Filter by clinic city"),
+    lat: float | None = Query(None, ge=-90, le=90, description="Latitude for distance sort"),
+    lng: float | None = Query(None, ge=-180, le=180, description="Longitude for distance sort"),
+    max_distance_km: float | None = Query(
+        None, gt=0, le=2000, description="Only include clinics within this radius"
+    ),
     limit: int = Query(50, ge=1, le=100, description="Number of results to return"),
     offset: int = Query(0, ge=0, description="Number of results to skip"),
     db: AsyncSession = Depends(get_db),
@@ -428,8 +435,21 @@ async def list_donation_requests(
     if urgency:
         stmt = stmt.where(BloodDonationRequest.urgency == urgency)
 
+    use_geo = lat is not None and lng is not None
+
     if city:
         stmt = stmt.join(Clinic).where(Clinic.city == city)
+    elif use_geo and max_distance_km is not None:
+        # SQL bounding-box prefilter; exact Haversine applied below (T-1004)
+        lat_min, lat_max, lng_min, lng_max = bounding_box(lat, lng, max_distance_km)
+        stmt = stmt.join(Clinic).where(
+            Clinic.latitude >= lat_min,
+            Clinic.latitude <= lat_max,
+        )
+        if lng_min <= lng_max:
+            stmt = stmt.where(Clinic.longitude >= lng_min, Clinic.longitude <= lng_max)
+        else:  # antimeridian wrap
+            stmt = stmt.where((Clinic.longitude >= lng_min) | (Clinic.longitude <= lng_max))
 
     # Sort by urgency (CRITICAL first) and then by created_at
     # Custom sorting using CASE statement
@@ -443,13 +463,17 @@ async def list_donation_requests(
         BloodDonationRequest.created_at,
     )
 
-    # Apply pagination
-    stmt = stmt.limit(limit).offset(offset)
+    if not use_geo:
+        stmt = stmt.limit(limit).offset(offset)
+        result = await db.execute(stmt)
+        return [DonationRequestWithDistance.model_validate(r) for r in result.scalars().all()]
 
+    # Geo mode: fetch a bounded window, filter+sort by exact distance (T-1004)
+    stmt = stmt.limit(500)
     result = await db.execute(stmt)
-    requests = result.scalars().all()
+    from hector.geo_compat import build_geo_page
 
-    return list(requests)
+    return build_geo_page(result.scalars().all(), lat or 0.0, lng or 0.0, limit, offset)
 
 
 @router.get(

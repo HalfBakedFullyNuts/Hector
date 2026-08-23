@@ -13,6 +13,7 @@ from hector.models.user import User
 from hector.schemas.auth import (
     TokenRefreshRequest,
     TokenResponse,
+    UserLocationUpdate,
     UserLoginRequest,
     UserRegisterRequest,
     UserResponse,
@@ -252,3 +253,40 @@ async def refresh_token(
         refresh_token=token_pair.refresh_token,
         token_type=token_pair.token_type,
     )
+
+
+@router.patch(
+    "/me",
+    response_model=UserResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Update my location",
+    description="Store optional coordinates used for proximity matching (T-1004)",
+)
+async def update_my_location(
+    update: UserLocationUpdate,
+    current_user: CurrentUser,
+    db: AsyncSession = Depends(get_db),
+) -> User:
+    """
+    Persist optional latitude/longitude for the authenticated user.
+
+    Args:
+        update: Optional coordinate values
+        current_user: Current authenticated user
+        db: Database session
+
+    Returns:
+        Updated user data (excluding password)
+
+    Raises:
+        401: Invalid or expired token
+        422: Coordinates out of range
+    """
+    assert current_user is not None
+    if update.latitude is not None:
+        current_user.latitude = update.latitude
+    if update.longitude is not None:
+        current_user.longitude = update.longitude
+    await db.commit()
+    await db.refresh(current_user)
+    return current_user
