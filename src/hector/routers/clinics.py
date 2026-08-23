@@ -11,8 +11,11 @@ from hector.auth.dependencies import CurrentUser, RoleChecker
 from hector.database import get_db
 from hector.models.clinic import Clinic
 from hector.models.clinic_staff import clinic_staff_association
+from hector.models.donation_request import BloodDonationRequest
 from hector.models.user import User, UserRole
 from hector.schemas.clinic import ClinicCreate, ClinicResponse, ClinicUpdate
+from hector.schemas.donation_request import DonationRequestResponse
+from hector.services.clinic_requests import fetch_clinic_requests, resolve_clinic_ids
 
 router = APIRouter(prefix="/clinics", tags=["clinics"])
 
@@ -81,6 +84,55 @@ async def create_clinic(
     await db.refresh(new_clinic)
 
     return new_clinic
+
+
+
+
+@router.get(
+    "/my-requests",
+    response_model=list[DonationRequestResponse],
+    status_code=status.HTTP_200_OK,
+    summary="List my clinic's donation requests",
+    description="List all requests created by my clinic, newest first (T-505)",
+)
+async def list_my_clinic_requests(
+    current_user: CurrentUser,
+    status_filter: str | None = Query(None, alias="status", description="Filter by status"),
+    limit: int = Query(50, ge=1, le=100, description="Number of results to return"),
+    offset: int = Query(0, ge=0, description="Number of results to skip"),
+    db: AsyncSession = Depends(get_db),
+) -> list[BloodDonationRequest]:
+    """
+    List all donation requests created by the current staff member's clinic.
+
+    Args:
+        current_user: Authenticated user; must be clinic staff or admin
+        status_filter: Optional request status filter
+        limit: Maximum number of results
+        offset: Number of results to skip
+        db: Database session
+
+    Returns:
+        Requests belonging to the caller's clinic(s)
+
+    Raises:
+        403: Caller is not staff of any clinic
+    """
+    if current_user.role not in (UserRole.CLINIC_STAFF, UserRole.ADMIN):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only clinic staff can view their clinic's requests",
+        )
+
+    clinic_ids = await resolve_clinic_ids(db, current_user.id)
+    assert isinstance(clinic_ids, list)
+    if not clinic_ids:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You must be linked to a clinic to view its requests",
+        )
+
+    return await fetch_clinic_requests(db, clinic_ids, status_filter, limit, offset)
 
 
 @router.get(
@@ -246,3 +298,5 @@ async def list_clinics(
     clinics = result.scalars().all()
 
     return list(clinics)
+
+
