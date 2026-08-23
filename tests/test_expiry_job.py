@@ -81,8 +81,10 @@ async def test_sweep_notifies_affected_clinics(db_session: AsyncSession) -> None
     await expire_overdue_requests(db_session)
 
     emails = (
-        await db_session.execute(select(EmailLog).where(EmailLog.recipient == clinic.email))
-    ).scalars().all()
+        (await db_session.execute(select(EmailLog).where(EmailLog.recipient == clinic.email)))
+        .scalars()
+        .all()
+    )
     assert len(emails) == 1
     assert "expired" in emails[0].subject.lower()
 

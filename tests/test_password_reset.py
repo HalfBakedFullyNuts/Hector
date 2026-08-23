@@ -27,9 +27,7 @@ async def _seed_user(db_session: AsyncSession) -> User:
 
 async def test_forgot_password_always_200(async_client: AsyncClient) -> None:
     """Unknown and known emails both return 200 (no enumeration)."""
-    known = await async_client.post(
-        "/auth/forgot-password", json={"email": "ghost@example.com"}
-    )
+    known = await async_client.post("/auth/forgot-password", json={"email": "ghost@example.com"})
     unknown = await async_client.post(
         "/auth/forgot-password", json={"email": "another-ghost@example.com"}
     )
