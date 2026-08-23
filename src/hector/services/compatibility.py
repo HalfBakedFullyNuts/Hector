@@ -12,7 +12,10 @@ UNKNOWN_DOG_SCORE = 25
 INCOMPATIBLE_SCORE = 0
 
 
-def compatibility_score(dog_type: "BloodType | None | str", needed: "BloodType | None | str") -> int:
+def compatibility_score(
+    dog_type: "BloodType | None | str",
+    needed: "BloodType | None | str",
+) -> int:
     """Return an integer fit score for a dog/request blood-type pair."""
     # StrEnum members compare equal to their string values, so accept both.
     if dog_type == BloodType.DEA_1_1_NEGATIVE:

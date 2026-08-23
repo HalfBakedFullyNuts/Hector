@@ -25,12 +25,12 @@ from hector.schemas.donation_request import (
     DonationRequestWithClinic,
     DonationRequestWithResponseCount,
 )
-from hector.services.compatibility import compatibility_score
 from hector.schemas.donation_response import (
     DonationResponseCreate,
     DonationResponseResponse,
     DonationResponseWithDetails,
 )
+from hector.services.compatibility import compatibility_score
 
 router = APIRouter(prefix="/requests", tags=["donation_requests"])
 

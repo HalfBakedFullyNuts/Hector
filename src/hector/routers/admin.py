@@ -5,15 +5,17 @@ from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import and_, func, select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
+from sqlalchemy.orm import InstrumentedAttribute, selectinload
+from sqlalchemy.sql.selectable import Select
 
 from hector.auth.dependencies import RoleChecker
 from hector.database import get_db
+from hector.models.base import BaseModel
 from hector.models.clinic import Clinic
 from hector.models.dog_profile import DogProfile
-from hector.models.donation_request import BloodDonationRequest, RequestStatus
+from hector.models.donation_request import BloodDonationRequest
 from hector.models.donation_response import DonationResponse, ResponseStatus
 from hector.models.user import User, UserRole
 from hector.schemas.admin import (
@@ -281,12 +283,12 @@ async def get_platform_statistics(
     db: AsyncSession = Depends(get_db),
 ) -> PlatformStatistics:
     """
-    Get platform-wide statistics.
+    Get platform-wide statistics with grouped aggregates (T-703).
 
     Args:
         current_user: Current authenticated admin user
-        start_date: Optional start date for filtering
-        end_date: Optional end date for filtering
+        start_date: Optional lower bound on record creation time
+        end_date: Optional upper bound on record creation time
         db: Database session
 
     Returns:
@@ -295,75 +297,50 @@ async def get_platform_statistics(
     Raises:
         403: User is not an admin
     """
-    # Total users
-    total_users_stmt = select(func.count(User.id))
-    total_users_result = await db.execute(total_users_stmt)
-    total_users = total_users_result.scalar() or 0
+    users_by_role = await _count_grouped(db, User, User.role, User.created_at, start_date, end_date)
+    total_users = sum(users_by_role.values())
 
-    # Users by role
-    users_by_role = {}
-    for role in UserRole:
-        role_count_stmt = select(func.count(User.id)).where(User.role == role)
-        role_count_result = await db.execute(role_count_stmt)
-        users_by_role[role.value] = role_count_result.scalar() or 0
+    dogs_total_stmt = _ranged_count(DogProfile.created_at, start_date, end_date)
+    total_dogs = int((await db.execute(dogs_total_stmt)).scalar() or 0)
 
-    # Total dogs
-    total_dogs_stmt = select(func.count(DogProfile.id))
-    total_dogs_result = await db.execute(total_dogs_stmt)
-    total_dogs = total_dogs_result.scalar() or 0
-
-    # Total clinics
-    total_clinics_stmt = select(func.count(Clinic.id))
-    total_clinics_result = await db.execute(total_clinics_stmt)
-    total_clinics = total_clinics_result.scalar() or 0
-
-    # Approved clinics
-    approved_clinics_stmt = select(func.count(Clinic.id)).where(Clinic.is_approved == True)  # noqa: E712
-    approved_clinics_result = await db.execute(approved_clinics_stmt)
-    approved_clinics = approved_clinics_result.scalar() or 0
-
-    # Pending clinics
+    clinics_by_flag = await _count_grouped(
+        db, Clinic, Clinic.is_approved, Clinic.created_at, start_date, end_date
+    )
+    # Group keys were stringified; PostgreSQL booleans surface as "True"/"False"
+    approved_clinics = clinics_by_flag.get(str(True), 0)
+    total_clinics = sum(clinics_by_flag.values())
     pending_clinics = total_clinics - approved_clinics
 
-    # Total requests
-    total_requests_stmt = select(func.count(BloodDonationRequest.id))
-    total_requests_result = await db.execute(total_requests_stmt)
-    total_requests = total_requests_result.scalar() or 0
-
-    # Requests by status
-    requests_by_status = {}
-    for req_status in RequestStatus:
-        status_count_stmt = select(func.count(BloodDonationRequest.id)).where(
-            BloodDonationRequest.status == req_status
-        )
-        status_count_result = await db.execute(status_count_stmt)
-        requests_by_status[req_status.value] = status_count_result.scalar() or 0
-
-    # Total responses
-    total_responses_stmt = select(func.count(DonationResponse.id))
-    total_responses_result = await db.execute(total_responses_stmt)
-    total_responses = total_responses_result.scalar() or 0
-
-    # Responses by status
-    responses_by_status = {}
-    for resp_status in ResponseStatus:
-        status_count_stmt = select(func.count(DonationResponse.id)).where(
-            DonationResponse.status == resp_status
-        )
-        status_count_result = await db.execute(status_count_stmt)
-        responses_by_status[resp_status.value] = status_count_result.scalar() or 0
-
-    # Successful donations this month
-    now = datetime.now(UTC)
-    first_day_of_month = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-    successful_donations_stmt = select(func.count(DonationResponse.id)).where(
-        and_(
-            DonationResponse.status == ResponseStatus.COMPLETED,
-            DonationResponse.updated_at >= first_day_of_month,
-        )
+    requests_by_status = await _count_grouped(
+        db,
+        BloodDonationRequest,
+        BloodDonationRequest.status,
+        BloodDonationRequest.created_at,
+        start_date,
+        end_date,
     )
-    successful_donations_result = await db.execute(successful_donations_stmt)
-    successful_donations_this_month = successful_donations_result.scalar() or 0
+    total_requests = sum(requests_by_status.values())
+
+    responses_by_status = await _count_grouped(
+        db,
+        DonationResponse,
+        DonationResponse.status,
+        DonationResponse.updated_at,
+        start_date,
+        end_date,
+    )
+    total_responses = sum(responses_by_status.values())
+
+    now = datetime.now(UTC)
+    window_start = start_date or now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    window_end = end_date or now
+    donations_stmt = (
+        select(func.count(DonationResponse.id))
+        .where(DonationResponse.status == ResponseStatus.COMPLETED)
+        .where(DonationResponse.updated_at >= window_start)
+        .where(DonationResponse.updated_at <= window_end)
+    )
+    successful_donations_this_month = int((await db.execute(donations_stmt)).scalar() or 0)
 
     return PlatformStatistics(
         total_users=total_users,
@@ -378,6 +355,39 @@ async def get_platform_statistics(
         responses_by_status=responses_by_status,
         successful_donations_this_month=successful_donations_this_month,
     )
+
+
+def _ranged_count(
+    created_col: InstrumentedAttribute,
+    start_date: datetime | None,
+    end_date: datetime | None,
+) -> Select[tuple[int]]:
+    """Build a COUNT(*) statement bounded by the optional creation window."""
+    stmt: Select[tuple[int]] = select(func.count(created_col))
+    if start_date is not None:
+        stmt = stmt.where(created_col >= start_date)
+    if end_date is not None:
+        stmt = stmt.where(created_col <= end_date)
+    return stmt
+
+
+async def _count_grouped(
+    db: AsyncSession,
+    model_cls: type[BaseModel],
+    group_col: InstrumentedAttribute,
+    created_col: InstrumentedAttribute,
+    start_date: datetime | None,
+    end_date: datetime | None,
+) -> dict[str, int]:
+    """Return one GROUP BY count query keyed by group_col values."""
+    assert model_cls is not None and group_col is not None
+    stmt = select(group_col, func.count()).group_by(group_col)
+    if start_date is not None:
+        stmt = stmt.where(created_col >= start_date)
+    if end_date is not None:
+        stmt = stmt.where(created_col <= end_date)
+    rows = (await db.execute(stmt)).all()
+    return {str(key): int(value) for key, value in rows}
 
 
 @router.post(

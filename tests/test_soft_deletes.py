@@ -18,9 +18,7 @@ async def _register_and_login(client: AsyncClient, email: str, role: str) -> str
         "/auth/register", json={"email": email, "password": "SecurePass123", "role": role}
     )
     assert register.status_code == 201, register.text
-    login = await client.post(
-        "/auth/login", json={"email": email, "password": "SecurePass123"}
-    )
+    login = await client.post("/auth/login", json={"email": email, "password": "SecurePass123"})
     assert login.status_code == 200
     token: str = login.json()["access_token"]
     return token

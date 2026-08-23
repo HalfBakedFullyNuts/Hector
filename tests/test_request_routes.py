@@ -1,7 +1,6 @@
 """Tests for /requests route ordering and compatible-request authorization."""
 
 from datetime import UTC, date, datetime, timedelta
-from uuid import uuid4
 
 from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession

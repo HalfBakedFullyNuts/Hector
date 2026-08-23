@@ -5,6 +5,7 @@ from datetime import date, timedelta
 from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
+
 def _dog_payload(name: str) -> dict:
     """Minimal valid dog creation payload."""
     return {
@@ -34,9 +35,7 @@ async def test_list_dogs_paginates_and_sorts_newest_first(
 
     created_ids: list[str] = []
     for i in range(5):
-        create = await async_client.post(
-            "/dogs", json=_dog_payload(f"Dog{i}"), headers=headers
-        )
+        create = await async_client.post("/dogs", json=_dog_payload(f"Dog{i}"), headers=headers)
         assert create.status_code == 201, create.text
         created_ids.append(create.json()["id"])
 

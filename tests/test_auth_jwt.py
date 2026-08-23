@@ -195,7 +195,6 @@ def test_unsafe_decoder_is_gone():
     assert not hasattr(jwt_module, "decode_token_unsafe")
 
 
-
 def test_different_users_get_different_tokens():
     """Test that different users get different tokens."""
     user1_id = uuid4()
