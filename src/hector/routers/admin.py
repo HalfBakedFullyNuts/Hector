@@ -12,6 +12,7 @@ from sqlalchemy.sql.selectable import Select
 
 from hector.auth.dependencies import RoleChecker
 from hector.database import get_db
+from hector.models.audit_log import AuditLog
 from hector.models.base import BaseModel
 from hector.models.clinic import Clinic
 from hector.models.dog_profile import DogProfile
@@ -20,6 +21,7 @@ from hector.models.donation_response import DonationResponse, ResponseStatus
 from hector.models.user import User, UserRole
 from hector.schemas.admin import (
     ApproveClinicRequest,
+    AuditLogResponse,
     DeleteUserRequest,
     PlatformStatistics,
     RejectClinicRequest,
@@ -33,6 +35,27 @@ router = APIRouter(prefix="/admin", tags=["admin"])
 # Admin-only role checker
 admin_only = RoleChecker([UserRole.ADMIN])
 AdminUser = Annotated[User, Depends(admin_only)]
+
+
+async def _record_action(
+    db: AsyncSession,
+    actor_user_id: UUID,
+    action: str,
+    target_type: str,
+    target_id: str,
+    details: dict | None = None,
+) -> None:
+    """Persist one immutable audit entry for a privileged action."""
+    assert action and target_type and target_id
+    db.add(
+        AuditLog(
+            actor_user_id=actor_user_id,
+            action=action,
+            target_type=target_type,
+            target_id=target_id,
+            details=details,
+        )
+    )
 
 
 @router.get(
@@ -166,11 +189,16 @@ async def toggle_user_active(
             detail="User not found",
         )
 
-    # Toggle active status
+    # Toggle active status and record who did it (T-701)
     user.is_active = not user.is_active
-
-    # TODO: Create audit log entry with reason
-    # For now, we'll just log the reason in the commit message
+    await _record_action(
+        db,
+        actor_user_id=current_user.id,
+        action="user.toggle_active",
+        target_type="user",
+        target_id=str(user.id),
+        details={"reason": request.reason or "", "new_state": user.is_active},
+    )
     await db.commit()
     await db.refresh(user)
 
@@ -265,7 +293,14 @@ async def delete_user(
     for dog in dogs:
         dog.is_active = False
 
-    # TODO: Create audit log entry with reason
+    await _record_action(
+        db,
+        actor_user_id=current_user.id,
+        action="user.delete",
+        target_type="user",
+        target_id=str(user.id),
+        details={"reason": request.reason or ""},
+    )
     await db.commit()
 
 
@@ -430,12 +465,19 @@ async def approve_clinic(
             detail="Clinic not found",
         )
 
-    # Set is_approved to True
+    # Set is_approved to True and record the decision (T-704)
     clinic.is_approved = True
 
-    # TODO: Send email notification to clinic staff
-    # TODO: Create audit log entry with approval notes
+    await _record_action(
+        db,
+        actor_user_id=current_user.id,
+        action="clinic.approve",
+        target_type="clinic",
+        target_id=str(clinic.id),
+        details={"notes": request.approval_notes or ""},
+    )
 
+    # TODO: Send email notification to clinic staff
     await db.commit()
     await db.refresh(clinic)
 
@@ -484,7 +526,48 @@ async def reject_clinic(
     # Soft delete preserves historical requests and responses (T-704)
     clinic.is_active = False
 
-    # TODO: Send email notification to clinic staff with rejection reason
-    # TODO: Create audit log entry with rejection reason
+    await _record_action(
+        db,
+        actor_user_id=current_user.id,
+        action="clinic.reject",
+        target_type="clinic",
+        target_id=str(clinic.id),
+        details={"reason": request.rejection_reason},
+    )
 
+    # TODO: Send email notification to clinic staff with rejection reason
     await db.commit()
+
+
+@router.get(
+    "/audit-log",
+    response_model=list[AuditLogResponse],
+    status_code=status.HTTP_200_OK,
+    summary="List audit log entries",
+    description="List privileged actions, newest first (admin only)",
+)
+async def list_audit_log(
+    current_user: AdminUser,
+    limit: int = Query(50, ge=1, le=100, description="Number of results to return"),
+    offset: int = Query(0, ge=0, description="Number of results to skip"),
+    db: AsyncSession = Depends(get_db),
+) -> list[AuditLog]:
+    """
+    List audit entries with pagination, newest first.
+
+    Args:
+        current_user: Current authenticated admin user
+        limit: Maximum number of entries
+        offset: Number of entries to skip
+        db: Database session
+
+    Returns:
+        List of audit log entries
+
+    Raises:
+        403: User is not an admin
+    """
+    assert current_user is not None
+    stmt = select(AuditLog).order_by(AuditLog.created_at.desc()).limit(limit).offset(offset)
+    result = await db.execute(stmt)
+    return list(result.scalars().all())

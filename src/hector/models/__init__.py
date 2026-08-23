@@ -1,5 +1,6 @@
 """Database models for the Hector platform."""
 
+from .audit_log import AuditLog
 from .base import BaseModel
 from .clinic import Clinic
 from .clinic_staff import clinic_staff_association
@@ -17,4 +18,5 @@ __all__ = [
     "DogProfile",
     "BloodDonationRequest",
     "DonationResponse",
+    "AuditLog",
 ]

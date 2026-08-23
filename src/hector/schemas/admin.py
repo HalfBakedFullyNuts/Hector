@@ -1,6 +1,7 @@
 """Admin schemas."""
 
 from datetime import datetime
+from uuid import UUID
 
 from pydantic import BaseModel, Field
 
@@ -89,3 +90,17 @@ class RejectClinicRequest(BaseModel):
         description="Reason for rejecting the clinic application",
         examples=["Unable to verify credentials"],
     )
+
+
+class AuditLogResponse(BaseModel):
+    """Response schema for audit log entries."""
+
+    model_config = {"from_attributes": True}
+
+    id: UUID = Field(..., description="Audit entry identifier")
+    actor_user_id: UUID | None = Field(None, description="Admin who performed the action")
+    action: str = Field(..., description="Machine-readable action name")
+    target_type: str = Field(..., description="Entity type affected")
+    target_id: str = Field(..., description="Identifier of the affected entity")
+    details: dict | None = Field(None, description="Structured context")
+    created_at: datetime = Field(..., description="When the action happened")
