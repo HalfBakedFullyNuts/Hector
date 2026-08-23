@@ -9,9 +9,7 @@ from hector.models.email_log import EmailLog
 from hector.services.email import EmailStatus, send_email
 
 
-async def test_log_mode_writes_console_and_db_row(
-    db_session: AsyncSession, caplog
-) -> None:
+async def test_log_mode_writes_console_and_db_row(db_session: AsyncSession, caplog) -> None:
     """Default transport logs to the service log and persists an email_log row."""
     import logging as _logging
 
@@ -76,9 +74,7 @@ async def test_smtp_mode_sends_and_records(db_session: AsyncSession, monkeypatch
     assert sent["to"] == "clinic@example.com"
 
     row = (
-        await db_session.execute(
-            select(EmailLog).where(EmailLog.recipient == "clinic@example.com")
-        )
+        await db_session.execute(select(EmailLog).where(EmailLog.recipient == "clinic@example.com"))
     ).scalar_one()
     assert row.status == "sent"
 

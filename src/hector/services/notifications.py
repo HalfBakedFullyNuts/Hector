@@ -105,7 +105,7 @@ async def notify_clinic_of_response(db: AsyncSession, response) -> None:
     await send_email(
         db=db,
         recipient=clinic.email,
-        subject=f"Donor response for your blood request",
+        subject="Donor response for your blood request",
         body_text=body,
         template="response_received",
         related_type="donation_response",

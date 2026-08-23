@@ -81,13 +81,17 @@ async def test_compatible_owner_gets_match_email(
             "needed_by_date": (datetime.now(UTC) + timedelta(days=3)).isoformat(),
             "blood_type_needed": "DEA_1_1_POSITIVE",
         },
-        headers={"Authorization": f"Bearer {(await async_client.post('/auth/login', json={'email': staff.email, 'password': 'SecurePass123'})).json()['access_token']}"},
+        headers={
+            "Authorization": f"Bearer {(await async_client.post('/auth/login', json={'email': staff.email, 'password': 'SecurePass123'})).json()['access_token']}"
+        },
     )
     assert create.status_code == 201, create.text
 
     emails = (
-        await db_session.execute(select(EmailLog).where(EmailLog.recipient == owner.email))
-    ).scalars().all()
+        (await db_session.execute(select(EmailLog).where(EmailLog.recipient == owner.email)))
+        .scalars()
+        .all()
+    )
     assert len(emails) == 1
     assert "MatchDog" in emails[0].body_text
     assert emails[0].template == "match_notification"
@@ -146,8 +150,10 @@ async def test_ineligible_or_far_owners_not_emailed(
 
     for email_addr in ("far@example.com", "busy@example.com", "unknownbt@example.com"):
         rows = (
-            await db_session.execute(select(EmailLog).where(EmailLog.recipient == email_addr))
-        ).scalars().all()
+            (await db_session.execute(select(EmailLog).where(EmailLog.recipient == email_addr)))
+            .scalars()
+            .all()
+        )
         assert rows == [], f"{email_addr} must not be notified"
 
 
@@ -200,11 +206,9 @@ async def test_daily_email_cap_enforced(
     assert create.status_code == 201
 
     total = len(
-        (
-            await db_session.execute(
-                select(EmailLog).where(EmailLog.recipient == owner.email)
-            )
-        ).scalars().all()
+        (await db_session.execute(select(EmailLog).where(EmailLog.recipient == owner.email)))
+        .scalars()
+        .all()
     )
     assert total == MAX_EMAILS_PER_USER_PER_DAY
 
@@ -249,7 +253,9 @@ async def test_accepted_response_notifies_clinic(
     assert accepted.status_code == 201
 
     clinic_emails = (
-        await db_session.execute(select(EmailLog).where(EmailLog.recipient == clinic.email))
-    ).scalars().all()
+        (await db_session.execute(select(EmailLog).where(EmailLog.recipient == clinic.email)))
+        .scalars()
+        .all()
+    )
     assert len(clinic_emails) == 1
     assert clinic_emails[0].template == "response_received"

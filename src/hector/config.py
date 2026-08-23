@@ -125,6 +125,13 @@ class Settings(BaseSettings):
     )
     smtp_start_tls: bool = Field(True, description="Use STARTTLS when connecting")
 
+    # Media storage (T-1001)
+    media_dir: str = Field(
+        "media",
+        min_length=1,
+        description="Base directory for uploaded dog photos",
+    )
+
 
 @lru_cache(maxsize=1)
 def get_settings() -> Settings:

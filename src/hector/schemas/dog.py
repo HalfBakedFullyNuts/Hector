@@ -213,6 +213,7 @@ class DogProfileResponse(BaseModel):
     last_donation_date: date | None = Field(None, description="Date of last blood donation")
     medical_notes: str | None = Field(None, description="Medical history and health information")
     vaccination_status: str | None = Field(None, description="Current vaccination status")
+    photo_url: str | None = Field(None, description="Public URL of the dog's photo")
     is_active: bool = Field(..., description="Whether the dog profile is active")
     is_available_for_donation: bool = Field(
         ..., description="Whether the dog can currently appear as a donor"

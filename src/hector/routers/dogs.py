@@ -2,7 +2,7 @@
 
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -15,6 +15,7 @@ from hector.schemas.dog import (
     DogProfileResponse,
     DogProfileUpdate,
 )
+from hector.services.photos import PhotoValidationError, apply_photo_upload, get_media_dir
 
 router = APIRouter(prefix="/dogs", tags=["dogs"])
 
@@ -306,4 +307,62 @@ async def update_dog_availability(
     await db.commit()
     await db.refresh(dog)
 
+    return dog
+
+
+@router.post(
+    "/{dog_id}/photo",
+    response_model=DogProfileResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Upload dog photo",
+    description="Upload a JPEG/PNG photo (max 5MB, max 2000x2000) for my dog",
+)
+async def upload_dog_photo(
+    dog_id: UUID,
+    current_user: CurrentUser,
+    file: UploadFile = File(...),
+    db: AsyncSession = Depends(get_db),
+) -> DogProfile:
+    """
+    Store an uploaded photo plus thumbnail for the dog (T-1001).
+
+    Args:
+        dog_id: Dog profile UUID
+        file: Multipart image upload
+        current_user: Current authenticated owner
+        db: Database session
+
+    Returns:
+        Updated dog profile with photo_url
+
+    Raises:
+        404: Dog not found or not owned by user
+        422: Invalid image type/size/dimensions
+    """
+    stmt = select(DogProfile).where(
+        DogProfile.id == dog_id,
+        DogProfile.owner_id == current_user.id,
+        DogProfile.is_active == True,  # noqa: E712
+    )
+    result = await db.execute(stmt)
+    dog = result.scalar_one_or_none()
+
+    if not dog:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Dog profile not found",
+        )
+
+    data = await file.read()
+
+    try:
+        photo_url = await apply_photo_upload(db, dog, file.content_type, data, get_media_dir())
+    except PhotoValidationError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=str(exc),
+        ) from None
+
+    assert isinstance(photo_url, str)
+    await db.refresh(dog)
     return dog

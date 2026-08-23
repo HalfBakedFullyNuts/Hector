@@ -1,9 +1,11 @@
 """Application factory for the Hector FastAPI service."""
 
 import logging
+from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 
 from . import get_version
 from .config import Settings, get_settings, settings_asdict
@@ -25,6 +27,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         description="API for connecting vet clinics with dog blood donors",
         version=get_version(),
     )
+
+    # Serve uploaded dog photos (T-1001)
+    media_path = Path(settings.media_dir)
+    media_path.mkdir(parents=True, exist_ok=True)
+    app.mount("/media", StaticFiles(directory=str(media_path)), name="media")
 
     # Configure CORS
     app.add_middleware(

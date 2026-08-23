@@ -108,6 +108,12 @@ class DogProfile(BaseModel):
         doc="Current vaccination status",
     )
 
+    photo_url: Mapped[str | None] = mapped_column(
+        String(500),
+        nullable=True,
+        doc="Public URL of the dog's uploaded photo (T-1001)",
+    )
+
     is_active: Mapped[bool] = mapped_column(
         Boolean,
         default=True,
