@@ -1,6 +1,6 @@
 """Authentication and user management endpoints."""
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -17,6 +17,7 @@ from hector.schemas.auth import (
     UserRegisterRequest,
     UserResponse,
 )
+from hector.services.rate_limit import get_login_limiter
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -92,6 +93,7 @@ async def register_user(
 )
 async def login_user(
     request: UserLoginRequest,
+    http_request: Request,
     db: AsyncSession = Depends(get_db),
 ) -> TokenResponse:
     """
@@ -99,6 +101,7 @@ async def login_user(
 
     Args:
         request: User login credentials
+        http_request: Raw request (used to key rate limiting by client IP)
         db: Database session
 
     Returns:
@@ -106,8 +109,21 @@ async def login_user(
 
     Raises:
         401: Invalid credentials or inactive account
+        429: Too many failed login attempts from this IP
         422: Invalid request data
     """
+    limiter = get_login_limiter()
+    client_ip = http_request.client.host if http_request.client else "unknown"
+    rate_limit_key = f"login:{client_ip}"
+
+    blocked, retry_after = limiter.check(rate_limit_key)
+    if blocked:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Too many failed login attempts. Try again later.",
+            headers={"Retry-After": str(retry_after)},
+        )
+
     # Find user by email
     stmt = select(User).where(User.email == request.email)
     result = await db.execute(stmt)
@@ -115,6 +131,7 @@ async def login_user(
 
     # Check if user exists and password is correct
     if not user or not verify_password(request.password, user.hashed_password):
+        limiter.record_failure(rate_limit_key)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid email or password",
@@ -124,9 +141,8 @@ async def login_user(
     # Check if user account is active
     if not user.is_active:
         raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Account is inactive",
-            headers={"WWW-Authenticate": "Bearer"},
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Account disabled",
         )
 
     # Generate token pair
@@ -135,6 +151,8 @@ async def login_user(
         email=user.email,
         role=user.role.value,
     )
+
+    limiter.reset(rate_limit_key)
 
     return TokenResponse(
         access_token=token_pair.access_token,

@@ -433,9 +433,10 @@ class TestUserLogin:
 
         response = await client.post("/auth/login", json=payload)
 
-        assert response.status_code == 401
+        # T-203: inactive accounts return 403 with "Account disabled"
+        assert response.status_code == 403
         data = response.json()
-        assert "inactive" in data["detail"].lower()
+        assert data["detail"] == "Account disabled"
 
     async def test_login_missing_email(
         self,
