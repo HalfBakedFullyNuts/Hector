@@ -3,8 +3,20 @@
 from functools import lru_cache
 from typing import Any
 
-from pydantic import Field, ValidationError
+from pydantic import Field, ValidationError, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+# Exact-match secrets that must never be accepted (design D4 / B2).
+KNOWN_DEFAULT_SECRETS = frozenset(
+    {
+        "your-secret-key-here-change-in-production",
+        "changeme",
+        "secret",
+        "my-secret-key",
+    }
+)
+
+_SENSITIVE_URL_MARKER = ":***@"
 
 
 class Settings(BaseSettings):
@@ -46,6 +58,18 @@ class Settings(BaseSettings):
         description="Secret key for signing JWT tokens",
         min_length=32,
     )
+
+    @field_validator("jwt_secret_key")
+    @classmethod
+    def reject_known_defaults(cls, value: str) -> str:
+        """Refuse publicly known default secrets at startup."""
+        assert isinstance(value, str)
+        if value in KNOWN_DEFAULT_SECRETS:
+            raise ValueError(
+                "known-default JWT secret rejected; generate one: openssl rand -hex 32"
+            )
+        return value
+
     jwt_algorithm: str = Field(
         "HS256",
         description="Algorithm used for JWT signing",
@@ -101,6 +125,22 @@ def reset_settings_cache() -> None:
 
 
 def settings_asdict(settings: Settings) -> dict[str, Any]:
-    """Return settings as a plain dict for logging/debugging."""
+    """Return settings as a plain dict with secrets masked, safe for logging."""
 
-    return settings.model_dump()
+    data: dict[str, Any] = settings.model_dump()
+    data["jwt_secret_key"] = "***"
+
+    database_url = data.get("database_url")
+    assert isinstance(database_url, str)
+    if "@" in database_url and "://" in database_url:
+        scheme_and_rest = database_url.split("://", 1)
+        if "@" in scheme_and_rest[1]:
+            host_part = scheme_and_rest[1].split("@", 1)[1]
+            credentials = scheme_and_rest[1].split("@", 1)[0]
+            if ":" in credentials:
+                user = credentials.split(":", 1)[0]
+                data["database_url"] = (
+                    f"{scheme_and_rest[0]}://{user}{_SENSITIVE_URL_MARKER}{host_part}"
+                )
+
+    return data

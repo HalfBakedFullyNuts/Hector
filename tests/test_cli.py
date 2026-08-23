@@ -33,9 +33,7 @@ async def test_create_admin_creates_verified_admin(db_session: AsyncSession) -> 
     code = await _create_admin("admin-cli@example.com", STRONG_PASSWORD)
     assert code == 0
 
-    result = await db_session.execute(
-        select(User).where(User.email == "admin-cli@example.com")
-    )
+    result = await db_session.execute(select(User).where(User.email == "admin-cli@example.com"))
     user = result.scalar_one()
     assert user.role == UserRole.ADMIN
     assert user.is_active is True

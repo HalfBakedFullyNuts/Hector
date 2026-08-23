@@ -31,8 +31,8 @@ def _build_parser() -> argparse.ArgumentParser:
 
 async def _create_admin(email: str, password: str) -> int:
     """Persist a verified active admin; returns a process exit code."""
-    from hector.database import close_db, get_session_factory
     from hector.config import get_settings
+    from hector.database import close_db, get_session_factory
 
     get_settings()
     try:
