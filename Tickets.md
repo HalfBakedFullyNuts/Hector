@@ -1647,4 +1647,14 @@ IMPLEMENTATION STATUS (2026-08-23)
    - T-1004 Haversine distance sort/filter + PATCH /auth/me location
    - T-1005 APScheduler expiry sweep (daily + startup)
    - T-1008 password reset w/ hashed single-use tokens
-⏳ Frontend completion (Phase 8-9 gaps) + CI: plans 3-4
+✅ Frontend completion + CI (plans 3-4): complete
+   - T-900 real auth (DEV_MODE removed), T-901 clinic dashboard,
+     T-902 create request, T-903 request detail/responses,
+     T-905 dog form + photo upload, T-906 browse w/ URL filters +
+     compatibility badges, T-907 respond form, T-908/909/910 admin
+     panels, T-1006/T-1007/T-1008 frontend flows
+   - Vitest suite (17 tests), CI: Postgres service container runs the
+     full backend matrix plus frontend build/lint/tests
+   - scripts/smoke_test.sh verifies the whole journey end-to-end
+
+MVP COMPLETE — all ticketed features implemented and verified.

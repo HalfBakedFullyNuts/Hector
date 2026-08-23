@@ -67,11 +67,15 @@ def main(argv: list[str] | None = None) -> int:
     assert args is not None
     if args.command == "create-admin":
         try:
+            # Same validation as the API so the account is actually usable
+            from pydantic import EmailStr, TypeAdapter
+
+            valid_email = str(TypeAdapter(EmailStr).validate_python(args.email)).lower()
             strong_password = validate_password_strength(args.password)
         except ValueError as exc:
             print(f"error: {exc}", file=sys.stderr)  # noqa: T201
             return 2
-        return asyncio.run(_create_admin(args.email.lower(), strong_password))
+        return asyncio.run(_create_admin(valid_email, strong_password))
 
     if args.command == "serve":
         from hector.main import run_server
