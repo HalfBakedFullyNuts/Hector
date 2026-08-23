@@ -63,6 +63,16 @@ class User(BaseModel):
         doc="Whether the user's email has been verified",
     )
 
+    latitude: Mapped[float | None] = mapped_column(
+        nullable=True,
+        doc="Approximate latitude for proximity matching (T-1004)",
+    )
+
+    longitude: Mapped[float | None] = mapped_column(
+        nullable=True,
+        doc="Approximate longitude for proximity matching (T-1004)",
+    )
+
     # Relationships
     # dog_profiles: Relationship to DogProfile (one-to-many)
     # Will be defined in DogProfile model
