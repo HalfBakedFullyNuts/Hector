@@ -1639,5 +1639,12 @@ IMPLEMENTATION STATUS (2026-08-23)
      deletes, audit log, admin CLI bootstrap, IDOR fixes)
    - T-502 response counts, T-604 compatibility scores, T-703 stats
      date filters, T-301 pagination implemented
-⏳ Phase 10 (T-1000..T-1008) and Phase 8-9 frontend completion:
-   tracked in docs/superpowers/plans/ (plans 2-4)
+✅ Phase 10 backend (plan 2): complete
+   - T-1000 email service (log mode default / SMTP via env)
+   - T-1001 photo upload w/ validation + thumbnails, served from /media
+   - T-1002 match notifications w/ 5/day cap + city filter
+   - T-1003 clinic response notifications (ACCEPTED only)
+   - T-1004 Haversine distance sort/filter + PATCH /auth/me location
+   - T-1005 APScheduler expiry sweep (daily + startup)
+   - T-1008 password reset w/ hashed single-use tokens
+⏳ Frontend completion (Phase 8-9 gaps) + CI: plans 3-4
