@@ -112,7 +112,14 @@ class DogProfile(BaseModel):
         Boolean,
         default=True,
         nullable=False,
-        doc="Whether the dog profile is active",
+        doc="Whether the dog profile is active (soft-delete flag)",
+    )
+
+    is_available_for_donation: Mapped[bool] = mapped_column(
+        Boolean,
+        default=True,
+        nullable=False,
+        doc="Whether the dog can currently appear as a donor (T-305)",
     )
 
     # Relationships
@@ -153,8 +160,8 @@ class DogProfile(BaseModel):
         """
         from datetime import datetime
 
-        # Check if profile is active
-        if not self.is_active:
+        # Soft-deleted or explicitly unavailable dogs are never eligible
+        if not self.is_active or not self.is_available_for_donation:
             return False
 
         # Check weight

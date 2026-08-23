@@ -107,7 +107,7 @@ async def get_clinic(
     Raises:
         404: Clinic not found
     """
-    stmt = select(Clinic).where(Clinic.id == clinic_id)
+    stmt = select(Clinic).where(Clinic.id == clinic_id, Clinic.is_active == True)  # noqa: E712
     result = await db.execute(stmt)
     clinic = result.scalar_one_or_none()
 
@@ -225,8 +225,8 @@ async def list_clinics(
     except Exception:
         current_user = None
 
-    # Build query
-    stmt = select(Clinic)
+    # Build query (soft-deleted clinics are hidden from everyone)
+    stmt = select(Clinic).where(Clinic.is_active == True)  # noqa: E712
 
     # Filter by approval status (only admins see unapproved clinics)
     if not current_user or current_user.role != UserRole.ADMIN:

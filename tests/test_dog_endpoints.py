@@ -456,8 +456,8 @@ class TestUpdateDogAvailability:
         dog_owner_token: str,
         dog_profile: DogProfile,
     ) -> None:
-        """Test marking a dog as unavailable."""
-        update_data = {"is_active": False}
+        """Test marking a dog as unavailable for donation (T-305)."""
+        update_data = {"is_available": False}
 
         response = await async_client.patch(
             f"/dogs/{dog_profile.id}/availability",
@@ -467,7 +467,9 @@ class TestUpdateDogAvailability:
 
         assert response.status_code == 200
         data = response.json()
-        assert data["is_active"] is False
+        assert data["is_available_for_donation"] is False
+        # Soft-delete flag must remain untouched
+        assert data["is_active"] is True
 
     async def test_mark_dog_available(
         self,
@@ -478,11 +480,11 @@ class TestUpdateDogAvailability:
     ) -> None:
         """Test marking a dog as available."""
         # First mark as unavailable
-        dog_profile.is_active = False
+        dog_profile.is_available_for_donation = False
         await db_session.commit()
 
-        # Then mark as available
-        update_data = {"is_active": True}
+        # Then mark as available again
+        update_data = {"is_available": True}
 
         response = await async_client.patch(
             f"/dogs/{dog_profile.id}/availability",
@@ -501,7 +503,7 @@ class TestUpdateDogAvailability:
     ) -> None:
         """Test updating availability for non-existent dog."""
         non_existent_id = uuid4()
-        update_data = {"is_active": False}
+        update_data = {"is_available": False}
 
         response = await async_client.patch(
             f"/dogs/{non_existent_id}/availability",

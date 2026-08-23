@@ -214,15 +214,18 @@ class DogProfileResponse(BaseModel):
     medical_notes: str | None = Field(None, description="Medical history and health information")
     vaccination_status: str | None = Field(None, description="Current vaccination status")
     is_active: bool = Field(..., description="Whether the dog profile is active")
+    is_available_for_donation: bool = Field(
+        ..., description="Whether the dog can currently appear as a donor"
+    )
     created_at: datetime = Field(..., description="Profile creation timestamp")
     updated_at: datetime = Field(..., description="Last update timestamp")
 
 
 class DogAvailabilityUpdate(BaseModel):
-    """Request schema for updating dog availability status."""
+    """Request schema for updating dog donation availability."""
 
-    is_active: bool = Field(
+    is_available: bool = Field(
         ...,
-        description="Whether the dog should be marked as active/available",
+        description="Whether the dog is available for donation",
         examples=[True],
     )

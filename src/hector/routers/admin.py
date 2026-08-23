@@ -471,9 +471,8 @@ async def reject_clinic(
             detail="Clinic not found",
         )
 
-    # Soft delete: we'll just delete it from the database for now
-    # In production, you might want to keep a record of rejected clinics
-    await db.delete(clinic)
+    # Soft delete preserves historical requests and responses (T-704)
+    clinic.is_active = False
 
     # TODO: Send email notification to clinic staff with rejection reason
     # TODO: Create audit log entry with rejection reason

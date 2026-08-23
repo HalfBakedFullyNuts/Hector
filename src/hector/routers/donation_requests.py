@@ -699,8 +699,15 @@ async def respond_to_donation_request(
 
     # Check if dog is eligible (only for ACCEPTED status)
     if response.status == ResponseStatus.ACCEPTED:
-        # Check if dog is active
+        # Soft-deleted dogs cannot respond at all
         if not dog.is_active:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Dog profile is inactive",
+            )
+
+        # Explicitly unavailable dogs cannot accept (T-305)
+        if not dog.is_available_for_donation:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Dog is not marked as available for donation",

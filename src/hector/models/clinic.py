@@ -76,6 +76,13 @@ class Clinic(BaseModel):
         doc="Whether the clinic has been approved by an admin",
     )
 
+    is_active: Mapped[bool] = mapped_column(
+        Boolean,
+        default=True,
+        nullable=False,
+        doc="Whether the clinic record is active (soft-delete flag)",
+    )
+
     # Relationships
     staff: Mapped[list["User"]] = relationship(
         "User",

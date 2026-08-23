@@ -58,6 +58,7 @@ async def create_dog_profile(
         medical_notes=request.medical_notes,
         vaccination_status=request.vaccination_status,
         is_active=True,
+        is_available_for_donation=True,
     )
 
     db.add(new_dog)
@@ -91,7 +92,11 @@ async def list_my_dogs(
     Raises:
         401: Invalid or expired token
     """
-    stmt = select(DogProfile).where(DogProfile.owner_id == current_user.id)
+    stmt = (
+        select(DogProfile)
+        .where(DogProfile.owner_id == current_user.id, DogProfile.is_active == True)  # noqa: E712
+        .order_by(DogProfile.created_at.desc())
+    )
     result = await db.execute(stmt)
     dogs = result.scalars().all()
 
@@ -128,6 +133,7 @@ async def get_dog_profile(
     stmt = select(DogProfile).where(
         DogProfile.id == dog_id,
         DogProfile.owner_id == current_user.id,
+        DogProfile.is_active == True,  # noqa: E712
     )
     result = await db.execute(stmt)
     dog = result.scalar_one_or_none()
@@ -175,6 +181,7 @@ async def update_dog_profile(
     stmt = select(DogProfile).where(
         DogProfile.id == dog_id,
         DogProfile.owner_id == current_user.id,
+        DogProfile.is_active == True,  # noqa: E712
     )
     result = await db.execute(stmt)
     dog = result.scalar_one_or_none()
@@ -226,6 +233,7 @@ async def delete_dog_profile(
     stmt = select(DogProfile).where(
         DogProfile.id == dog_id,
         DogProfile.owner_id == current_user.id,
+        DogProfile.is_active == True,  # noqa: E712
     )
     result = await db.execute(stmt)
     dog = result.scalar_one_or_none()
@@ -236,8 +244,8 @@ async def delete_dog_profile(
             detail="Dog profile not found",
         )
 
-    # Delete the dog profile
-    await db.delete(dog)
+    # Soft delete preserves donation history (T-304)
+    dog.is_active = False
     await db.commit()
 
 
@@ -275,6 +283,7 @@ async def update_dog_availability(
     stmt = select(DogProfile).where(
         DogProfile.id == dog_id,
         DogProfile.owner_id == current_user.id,
+        DogProfile.is_active == True,  # noqa: E712
     )
     result = await db.execute(stmt)
     dog = result.scalar_one_or_none()
@@ -285,8 +294,8 @@ async def update_dog_availability(
             detail="Dog profile not found",
         )
 
-    # Update availability
-    dog.is_active = request.is_active
+    # Update donation availability (independent of soft-delete flag, T-305)
+    dog.is_available_for_donation = request.is_available
 
     await db.commit()
     await db.refresh(dog)
