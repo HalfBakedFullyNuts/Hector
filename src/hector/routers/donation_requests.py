@@ -31,6 +31,7 @@ from hector.schemas.donation_response import (
     DonationResponseWithDetails,
 )
 from hector.services.compatibility import compatibility_score
+from hector.services.notifications import notify_clinic_of_response, notify_compatible_owners
 
 router = APIRouter(prefix="/requests", tags=["donation_requests"])
 
@@ -103,6 +104,14 @@ async def create_donation_request(
     db.add(new_request)
     await db.commit()
     await db.refresh(new_request)
+
+    # Best-effort owner notifications; must not fail the request (T-1002)
+    try:
+        await notify_compatible_owners(db, new_request)
+    except Exception as exc:  # noqa: BLE001
+        import logging
+
+        logging.getLogger(__name__).error("match notification failed: %s", exc)
 
     return new_request
 
@@ -783,6 +792,15 @@ async def respond_to_donation_request(
             status_code=status.HTTP_409_CONFLICT,
             detail="You have already responded to this request with this dog",
         )
+
+    # Clinic notification on acceptances only (T-1003)
+    if response.status == ResponseStatus.ACCEPTED:
+        try:
+            await notify_clinic_of_response(db, new_response)
+        except Exception as exc:  # noqa: BLE001
+            import logging
+
+            logging.getLogger(__name__).error("response notification failed: %s", exc)
 
     return new_response
 

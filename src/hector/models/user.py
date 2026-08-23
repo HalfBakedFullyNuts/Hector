@@ -73,6 +73,13 @@ class User(BaseModel):
         doc="Approximate longitude for proximity matching (T-1004)",
     )
 
+    city: Mapped[str | None] = mapped_column(
+        String(100),
+        nullable=True,
+        index=True,
+        doc="Owner's city for local match notifications (T-1002)",
+    )
+
     # Relationships
     # dog_profiles: Relationship to DogProfile (one-to-many)
     # Will be defined in DogProfile model
