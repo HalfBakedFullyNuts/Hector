@@ -7,9 +7,29 @@ on:
     branches: [ "main" ]
 
 jobs:
-  lint-test:
-    name: Lint and Test
+  backend:
+    name: Backend gates
     runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: hector
+          POSTGRES_PASSWORD: hector
+          POSTGRES_DB: hector
+        ports:
+          - 5433:5432
+        options: >-
+          --health-cmd "pg_isready -U hector"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+
+    env:
+      HECTOR_ENVIRONMENT: test
+      HECTOR_DATABASE_URL: postgresql+asyncpg://hector:hector@127.0.0.1:5433/hector_test
+      HECTOR_JWT_SECRET_KEY: ci-only-signing-key-with-more-than-32-chars
 
     steps:
       - name: Checkout
@@ -27,10 +47,10 @@ jobs:
         run: uv pip install --system .[dev]
 
       - name: Ruff lint
-        run: uv run ruff check .
+        run: uv run ruff check src tests
 
       - name: Ruff format check
-        run: uv run ruff format --check .
+        run: uv run ruff format --check src tests
 
       - name: Type check
         run: uv run mypy src
@@ -38,5 +58,41 @@ jobs:
       - name: Security audit
         run: uv run pip-audit
 
-      - name: Tests
-        run: uv run pytest
+      - name: Create test database
+        run: |
+          PGPASSWORD=hector psql -h 127.0.0.1 -p 5433 -U hector -d hector \
+            -c "CREATE DATABASE hector_test;"
+
+      - name: Tests (full suite vs Postgres)
+        run: uv run pytest --run-db-tests
+
+  frontend:
+    name: Frontend gates
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Type check + build
+        working-directory: frontend
+        run: npm run build
+
+      - name: Lint
+        working-directory: frontend
+        run: npm run lint
+
+      - name: Tests (Vitest)
+        working-directory: frontend
+        run: npm test

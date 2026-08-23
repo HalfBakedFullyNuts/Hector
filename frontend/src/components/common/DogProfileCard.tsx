@@ -13,7 +13,7 @@ interface DogProfileCardProps {
 
 export const DogProfileCard: React.FC<DogProfileCardProps> = ({ dog, onClick }) => {
   // Calculate age
-  const ageYears = dog.age_years || calculateAge(dog.date_of_birth);
+  const ageYears = calculateAge(dog.date_of_birth);
 
   // Determine eligibility status
   const eligibilityStatus = getEligibilityStatus(dog, ageYears);
@@ -38,18 +38,22 @@ export const DogProfileCard: React.FC<DogProfileCardProps> = ({ dog, onClick }) 
           <p className="text-sm text-text-light">{dog.breed}</p>
         </div>
         <div
-          className={`px-3 py-1 rounded-full text-xs font-medium ${dog.is_active
+          className={`px-3 py-1 rounded-full text-xs font-medium ${dog.is_available_for_donation
             ? 'bg-primary-green text-green-800'
             : 'bg-gray-200 text-gray-600'
             }`}
         >
-          {dog.is_active ? 'Available' : 'Unavailable'}
+          {dog.is_available_for_donation ? 'Available' : 'Paused'}
         </div>
       </div>
 
-      {/* Dog Photo Placeholder */}
-      <div className="w-full h-40 bg-base-off-white rounded-input mb-4 flex items-center justify-center">
-        <span className="text-6xl">🐕</span>
+      {/* Dog Photo */}
+      <div className="w-full h-40 bg-base-off-white rounded-input mb-4 flex items-center justify-center overflow-hidden">
+        {dog.photo_url ? (
+          <img src={dog.photo_url} alt={dog.name} className="w-full h-full object-cover" />
+        ) : (
+          <span className="text-6xl">🐕</span>
+        )}
       </div>
 
       {/* Details Grid */}

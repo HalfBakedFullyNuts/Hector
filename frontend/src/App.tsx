@@ -5,25 +5,31 @@
 
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { AuthProvider } from './contexts/AuthContext';
-import { ViewAsProvider } from './contexts/ViewAsContext';
 import { ProtectedRoute } from './components/common/ProtectedRoute';
 import { PublicLayout } from './components/layout/PublicLayout';
 import { LandingPage } from './pages/public/LandingPage';
 import { LoginPage } from './pages/auth/LoginPage';
 import { RegisterPage } from './pages/auth/RegisterPage';
+import { ForgotPasswordPage } from './pages/auth/ForgotPasswordPage';
+import { ResetPasswordPage } from './pages/auth/ResetPasswordPage';
 import { DonorDashboard } from './pages/donor/DonorDashboard';
 import { DogProfileForm } from './pages/donor/DogProfileForm';
+import { BrowseRequestsPage } from './pages/donor/BrowseRequestsPage';
+import { RespondToRequestPage } from './pages/donor/RespondToRequestPage';
+import { MyResponsesPage } from './pages/donor/MyResponsesPage';
+import { ClinicDashboard } from './pages/clinic/ClinicDashboard';
+import { CreateRequestForm } from './pages/clinic/CreateRequestForm';
+import { ClinicRequestDetailPage } from './pages/clinic/ClinicRequestDetailPage';
+import { AdminUsersPage } from './pages/admin/AdminUsersPage';
+import { AdminClinicsPage } from './pages/admin/AdminClinicsPage';
+import { AdminStatsDashboard } from './pages/admin/AdminStatsDashboard';
 import { UserRole } from './types/auth';
-
-import { DevTools } from './components/dev/DevTools';
 
 function App() {
   return (
     <BrowserRouter>
       <AuthProvider>
-        <ViewAsProvider>
-          <DevTools />
-          <Routes>
+        <Routes>
           {/* Public routes */}
           <Route
             path="/"
@@ -46,6 +52,22 @@ function App() {
             element={
               <PublicLayout showHeader={false}>
                 <RegisterPage />
+              </PublicLayout>
+            }
+          />
+          <Route
+            path="/forgot-password"
+            element={
+              <PublicLayout showHeader={false}>
+                <ForgotPasswordPage />
+              </PublicLayout>
+            }
+          />
+          <Route
+            path="/reset-password"
+            element={
+              <PublicLayout showHeader={false}>
+                <ResetPasswordPage />
               </PublicLayout>
             }
           />
@@ -75,20 +97,53 @@ function App() {
               </ProtectedRoute>
             }
           />
+          <Route
+            path="/owner/requests"
+            element={
+              <ProtectedRoute allowedRoles={[UserRole.DOG_OWNER]}>
+                <BrowseRequestsPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/owner/requests/:requestId/respond"
+            element={
+              <ProtectedRoute allowedRoles={[UserRole.DOG_OWNER]}>
+                <RespondToRequestPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/owner/responses"
+            element={
+              <ProtectedRoute allowedRoles={[UserRole.DOG_OWNER]}>
+                <MyResponsesPage />
+              </ProtectedRoute>
+            }
+          />
 
           {/* Clinic Staff routes */}
           <Route
             path="/clinic"
             element={
               <ProtectedRoute allowedRoles={[UserRole.CLINIC_STAFF]}>
-                <div className="min-h-screen bg-base-off-white flex items-center justify-center">
-                  <div className="card">
-                    <h1 className="text-3xl font-bold text-text-dark mb-4">
-                      Clinic Dashboard
-                    </h1>
-                    <p className="text-text-light">Coming soon...</p>
-                  </div>
-                </div>
+                <ClinicDashboard />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/clinic/requests/new"
+            element={
+              <ProtectedRoute allowedRoles={[UserRole.CLINIC_STAFF]}>
+                <CreateRequestForm />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/clinic/requests/:requestId"
+            element={
+              <ProtectedRoute allowedRoles={[UserRole.CLINIC_STAFF]}>
+                <ClinicRequestDetailPage />
               </ProtectedRoute>
             }
           />
@@ -98,14 +153,23 @@ function App() {
             path="/admin"
             element={
               <ProtectedRoute allowedRoles={[UserRole.ADMIN]}>
-                <div className="min-h-screen bg-base-off-white flex items-center justify-center">
-                  <div className="card">
-                    <h1 className="text-3xl font-bold text-text-dark mb-4">
-                      Admin Dashboard
-                    </h1>
-                    <p className="text-text-light">Coming soon...</p>
-                  </div>
-                </div>
+                <AdminStatsDashboard />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/admin/users"
+            element={
+              <ProtectedRoute allowedRoles={[UserRole.ADMIN]}>
+                <AdminUsersPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/admin/clinics"
+            element={
+              <ProtectedRoute allowedRoles={[UserRole.ADMIN]}>
+                <AdminClinicsPage />
               </ProtectedRoute>
             }
           />
@@ -132,8 +196,7 @@ function App() {
               </div>
             }
           />
-          </Routes>
-        </ViewAsProvider>
+        </Routes>
       </AuthProvider>
     </BrowserRouter>
   );

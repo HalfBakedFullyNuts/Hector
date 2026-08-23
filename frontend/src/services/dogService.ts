@@ -1,6 +1,5 @@
 /**
- * Dog Service
- * Handles all dog profile-related API calls
+ * Dog Service — all dog profile API calls (real backend)
  */
 
 import { apiClient } from './apiClient';
@@ -11,58 +10,16 @@ import type {
   DogProfileUpdate,
   DogAvailabilityUpdate,
 } from '../types/dog';
-import { BloodType } from '../types/dog';
 
-const MOCK_DOGS: DogProfile[] = [
-  {
-    id: 'dog-1',
-    owner_id: 'dev-owner-001',
-    name: 'Buddy',
-    breed: 'Golden Retriever',
-    date_of_birth: '2020-01-01',
-    weight_kg: 32,
-    blood_type: BloodType.DEA_1_1_NEGATIVE,
-    is_active: true,
-    last_donation_date: '2023-10-15',
-    health_notes: 'Healthy and happy',
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
-    age_years: 3,
-    is_eligible_for_donation: true,
-  },
-  {
-    id: 'dog-2',
-    owner_id: 'dev-owner-001',
-    name: 'Luna',
-    breed: 'German Shepherd',
-    date_of_birth: '2021-05-20',
-    weight_kg: 28,
-    blood_type: BloodType.DEA_1_1_POSITIVE,
-    is_active: true,
-    last_donation_date: null,
-    health_notes: null,
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
-    age_years: 2,
-    is_eligible_for_donation: true,
-  },
-];
 export const dogService = {
-  /**
-   * Get all dogs for current user
-   */
-  async getMyDogs(): Promise<DogProfile[]> {
-    // Mock data for development
-    return new Promise((resolve) => {
-      setTimeout(() => resolve(MOCK_DOGS), 500);
+  /** T-301: paginated, newest-first listing of my active dogs */
+  async getMyDogs(limit = 50, offset = 0): Promise<DogProfile[]> {
+    const response = await apiClient.get<DogProfile[]>(API_ENDPOINTS.DOGS, {
+      params: { limit, offset },
     });
-    // const response = await apiClient.get<DogProfile[]>(API_ENDPOINTS.DOGS);
-    // return response.data;
+    return response.data;
   },
 
-  /**
-   * Get a specific dog by ID
-   */
   async getDogById(dogId: string): Promise<DogProfile> {
     const response = await apiClient.get<DogProfile>(
       `${API_ENDPOINTS.DOGS}/${dogId}`
@@ -70,9 +27,6 @@ export const dogService = {
     return response.data;
   },
 
-  /**
-   * Create a new dog profile
-   */
   async createDog(data: DogProfileCreate): Promise<DogProfile> {
     const response = await apiClient.post<DogProfile>(
       API_ENDPOINTS.DOGS,
@@ -81,9 +35,6 @@ export const dogService = {
     return response.data;
   },
 
-  /**
-   * Update dog profile
-   */
   async updateDog(
     dogId: string,
     data: DogProfileUpdate
@@ -95,9 +46,7 @@ export const dogService = {
     return response.data;
   },
 
-  /**
-   * Update dog availability status
-   */
+  /** T-305: toggles donation availability only */
   async updateDogAvailability(
     dogId: string,
     data: DogAvailabilityUpdate
@@ -109,11 +58,22 @@ export const dogService = {
     return response.data;
   },
 
-  /**
-   * Delete dog profile
-   */
+  /** Soft delete (T-304) */
   async deleteDog(dogId: string): Promise<void> {
     await apiClient.delete(`${API_ENDPOINTS.DOGS}/${dogId}`);
+  },
+
+  /** T-1001: multipart photo upload; returns updated profile with photo_url */
+  async uploadPhoto(dogId: string, file: File): Promise<DogProfile> {
+    const formData = new FormData();
+    formData.append('file', file);
+
+    const response = await apiClient.post<DogProfile>(
+      `${API_ENDPOINTS.DOGS}/${dogId}/photo`,
+      formData,
+      { headers: { 'Content-Type': 'multipart/form-data' } }
+    );
+    return response.data;
   },
 };
 

@@ -205,7 +205,7 @@ export const DonorDashboard: React.FC = () => {
                         <div className="flex items-start justify-between">
                           <div className="flex-1">
                             <h4 className="font-medium text-text-dark mb-1">
-                              {response.dog?.name || 'Dog'}
+                              {(response.dog?.name as string) || 'Dog'}
                             </h4>
                             <p className="text-sm text-text-light">
                               Response status:{' '}

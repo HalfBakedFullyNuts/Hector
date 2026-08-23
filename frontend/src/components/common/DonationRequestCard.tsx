@@ -75,23 +75,22 @@ export const DonationRequestCard: React.FC<DonationRequestCardProps> = ({
         </div>
       </div>
 
-      {/* Patient Details */}
-      {request.patient_breed && (
+      {/* Patient Info */}
+      {request.patient_info && (
         <div className="mb-4">
           <p className="text-xs text-text-light mb-1">Patient</p>
-          <p className="text-sm font-medium text-text-dark">
-            {request.patient_breed}
+          <p className="text-sm text-text-dark line-clamp-2">
+            {request.patient_info}
           </p>
         </div>
       )}
 
-      {/* Reason for Transfusion */}
-      {request.reason_for_transfusion && (
+      {/* Distance badge when geo-sorted (T-1004) */}
+      {typeof (request as { distance_km?: number | null }).distance_km === 'number' && (
         <div className="mb-4">
-          <p className="text-xs text-text-light mb-1">Reason</p>
-          <p className="text-sm text-text-dark line-clamp-2">
-            {request.reason_for_transfusion}
-          </p>
+          <span className="px-3 py-1 rounded-full text-xs font-medium bg-indigo-100 text-indigo-800 border border-indigo-200">
+            📏 {(request as { distance_km?: number }).distance_km} km away
+          </span>
         </div>
       )}
 

@@ -1,9 +1,9 @@
 /**
  * Dog Profile Form Page
- * Create or edit a dog profile
+ * Create or edit a dog profile; includes photo upload (T-1001)
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -14,12 +14,12 @@ import { Select } from '../../components/common/Select';
 import { Textarea } from '../../components/common/Textarea';
 import { Button } from '../../components/common/Button';
 import { dogService } from '../../services/dogService';
-import { BloodType } from '../../types/dog';
+import { BloodType, DogSex } from '../../types/dog';
 
 // Validation schema
 const dogProfileSchema = z.object({
   name: z.string().min(1, 'Name is required').max(100, 'Name is too long'),
-  breed: z.string().min(1, 'Breed is required').max(100, 'Breed is too long'),
+  breed: z.string().max(100, 'Breed is too long').optional(),
   date_of_birth: z.string().min(1, 'Date of birth is required').refine(
     (dateStr) => {
       const date = new Date(dateStr);
@@ -41,9 +41,9 @@ const dogProfileSchema = z.object({
     .number()
     .min(25, 'Dog must weigh at least 25kg for donation eligibility')
     .max(100, 'Weight seems unusually high, please verify'),
-  blood_type: z.nativeEnum(BloodType).optional().nullable(),
-  is_active: z.boolean(),
-  health_notes: z.string().max(1000, 'Health notes are too long').optional(),
+  sex: z.nativeEnum(DogSex),
+  blood_type: z.string().optional(),
+  medical_notes: z.string().max(2000, 'Health notes are too long').optional(),
 });
 
 type DogProfileFormData = z.infer<typeof dogProfileSchema>;
@@ -56,6 +56,11 @@ export const DogProfileForm: React.FC = () => {
   const [loading, setLoading] = useState(isEditMode);
   const [apiError, setApiError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [isAvailable, setIsAvailable] = useState(true);
+  const [photoFile, setPhotoFile] = useState<File | null>(null);
+  const [photoPreview, setPhotoPreview] = useState<string | null>(null);
+  const [existingPhotoUrl, setExistingPhotoUrl] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const {
     register,
@@ -64,15 +69,15 @@ export const DogProfileForm: React.FC = () => {
     reset,
     watch,
   } = useForm<DogProfileFormData>({
-    resolver: zodResolver(dogProfileSchema) as any,
+    resolver: zodResolver(dogProfileSchema) as never,
     defaultValues: {
       name: '',
       breed: '',
       date_of_birth: '',
       weight_kg: 25,
-      blood_type: null,
-      is_active: true,
-      health_notes: '',
+      sex: DogSex.MALE,
+      blood_type: '',
+      medical_notes: '',
     },
   });
 
@@ -100,32 +105,40 @@ export const DogProfileForm: React.FC = () => {
     };
   }, [dateOfBirth, weightKg]);
 
-  // Load dog data if editing
-  useEffect(() => {
-    if (isEditMode && dogId) {
-      loadDogData(dogId);
-    }
-  }, [isEditMode, dogId]);
-
-  const loadDogData = async (id: string) => {
+  const loadDogData = React.useCallback(async (id: string) => {
     try {
       setLoading(true);
       const dog = await dogService.getDogById(id);
       reset({
         name: dog.name,
-        breed: dog.breed,
+        breed: dog.breed ?? '',
         date_of_birth: dog.date_of_birth,
         weight_kg: dog.weight_kg,
-        blood_type: dog.blood_type || null,
-        is_active: dog.is_active,
-        health_notes: dog.health_notes || '',
+        sex: dog.sex,
+        blood_type: dog.blood_type ?? '',
+        medical_notes: dog.medical_notes ?? '',
       });
+      setIsAvailable(dog.is_available_for_donation);
+      setExistingPhotoUrl(dog.photo_url);
     } catch (err) {
       console.error('Error loading dog:', err);
       setApiError('Failed to load dog profile. Please try again.');
     } finally {
       setLoading(false);
     }
+  }, [reset]);
+
+  useEffect(() => {
+    if (isEditMode && dogId) {
+      void loadDogData(dogId);
+    }
+  }, [isEditMode, dogId, loadDogData]);
+
+  const handlePhotoChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    setPhotoFile(file);
+    setPhotoPreview(URL.createObjectURL(file));
   };
 
   const onSubmit = async (data: DogProfileFormData) => {
@@ -133,19 +146,28 @@ export const DogProfileForm: React.FC = () => {
       setApiError(null);
       setSuccessMessage(null);
 
-      // Clean up the data
       const submitData = {
-        ...data,
-        blood_type: data.blood_type || undefined,
-        health_notes: data.health_notes || undefined,
+        name: data.name,
+        breed: data.breed || undefined,
+        date_of_birth: data.date_of_birth,
+        weight_kg: Number(data.weight_kg),
+        sex: data.sex,
+        blood_type: (data.blood_type || undefined) as never,
+        medical_notes: data.medical_notes || undefined,
       };
 
+      let savedDogId = dogId;
       if (isEditMode && dogId) {
         await dogService.updateDog(dogId, submitData);
         setSuccessMessage('Dog profile updated successfully!');
       } else {
-        await dogService.createDog(submitData);
+        const created = await dogService.createDog(submitData);
+        savedDogId = created.id;
         setSuccessMessage('Dog profile created successfully!');
+      }
+
+      if (photoFile && savedDogId) {
+        await dogService.uploadPhoto(savedDogId, photoFile);
       }
 
       // Redirect to dashboard after a short delay
@@ -154,7 +176,10 @@ export const DogProfileForm: React.FC = () => {
       }, 1500);
     } catch (err: unknown) {
       console.error('Error saving dog:', err);
-      setApiError('Failed to save dog profile. Please try again.');
+      setApiError(
+        (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail ??
+          'Failed to save dog profile. Please try again.'
+      );
     }
   };
 
@@ -164,10 +189,20 @@ export const DogProfileForm: React.FC = () => {
     { value: BloodType.DEA_1_1_NEGATIVE, label: 'DEA 1.1 Negative (Universal Donor)' },
     { value: BloodType.DEA_1_1_POSITIVE, label: 'DEA 1.1 Positive' },
     { value: BloodType.DEA_1_2_POSITIVE, label: 'DEA 1.2 Positive' },
+    { value: BloodType.DEA_1_2_NEGATIVE, label: 'DEA 1.2 Negative' },
     { value: BloodType.DEA_3_POSITIVE, label: 'DEA 3 Positive' },
+    { value: BloodType.DEA_3_NEGATIVE, label: 'DEA 3 Negative' },
     { value: BloodType.DEA_4_POSITIVE, label: 'DEA 4 Positive' },
+    { value: BloodType.DEA_4_NEGATIVE, label: 'DEA 4 Negative' },
     { value: BloodType.DEA_5_POSITIVE, label: 'DEA 5 Positive' },
-    { value: BloodType.UNKNOWN, label: 'Other / Unknown' },
+    { value: BloodType.DEA_5_NEGATIVE, label: 'DEA 5 Negative' },
+    { value: BloodType.DEA_7_POSITIVE, label: 'DEA 7 Positive' },
+    { value: BloodType.DEA_7_NEGATIVE, label: 'DEA 7 Negative' },
+  ];
+
+  const sexOptions = [
+    { value: DogSex.MALE, label: 'Male' },
+    { value: DogSex.FEMALE, label: 'Female' },
   ];
 
   if (loading) {
@@ -185,7 +220,7 @@ export const DogProfileForm: React.FC = () => {
 
   return (
     <DashboardLayout>
-      <div className="p-8 max-w-3xl mx-auto">
+      <div className="p-4 md:p-8 max-w-3xl mx-auto">
         {/* Header */}
         <div className="mb-8">
           <h1 className="text-3xl font-bold text-text-dark mb-2">
@@ -193,8 +228,8 @@ export const DogProfileForm: React.FC = () => {
           </h1>
           <p className="text-text-light">
             {isEditMode
-              ? 'Update your dog\'s information to keep it accurate'
-              : 'Add your dog\'s information to start helping save lives'}
+              ? "Update your dog's information to keep it accurate"
+              : "Add your dog's information to start helping save lives"}
           </p>
         </div>
 
@@ -254,6 +289,13 @@ export const DogProfileForm: React.FC = () => {
                 />
               </div>
 
+              <Select
+                label="Sex"
+                options={sexOptions}
+                error={errors.sex?.message}
+                {...register('sex')}
+              />
+
               {/* Eligibility Indicator */}
               {eligibilityInfo && (
                 <div
@@ -302,8 +344,8 @@ export const DogProfileForm: React.FC = () => {
                 label="Health Notes (Optional)"
                 placeholder="Any health conditions, medications, or special considerations..."
                 rows={4}
-                error={errors.health_notes?.message}
-                {...register('health_notes')}
+                error={errors.medical_notes?.message}
+                {...register('medical_notes')}
               />
             </div>
           </div>
@@ -317,13 +359,14 @@ export const DogProfileForm: React.FC = () => {
             <div className="flex items-start gap-3">
               <input
                 type="checkbox"
-                id="is_active"
+                id="is_available"
+                checked={isAvailable}
+                onChange={(e) => setIsAvailable(e.target.checked)}
                 className="mt-1 h-4 w-4 text-primary-blue focus:ring-primary-blue border-gray-300 rounded"
-                {...register('is_active')}
               />
               <div>
                 <label
-                  htmlFor="is_active"
+                  htmlFor="is_available"
                   className="font-medium text-text-dark cursor-pointer"
                 >
                   Available for blood donation
@@ -336,21 +379,48 @@ export const DogProfileForm: React.FC = () => {
             </div>
           </div>
 
-          {/* Photo Upload Placeholder */}
+          {/* Photo Upload (T-1001) */}
           <div className="card">
-            <h2 className="text-xl font-semibold text-text-dark mb-4">
-              Photo (Coming Soon)
-            </h2>
-            <div className="bg-base-off-white border-2 border-dashed border-gray-300 rounded-input p-8 text-center">
-              <span className="text-6xl mb-3 block">📷</span>
-              <p className="text-text-light">
-                Photo upload feature coming in a future update
-              </p>
+            <h2 className="text-xl font-semibold text-text-dark mb-4">Photo</h2>
+
+            <div className="flex flex-col sm:flex-row items-center gap-6">
+              <div className="w-32 h-32 bg-base-off-white rounded-input flex items-center justify-center overflow-hidden shrink-0">
+                {photoPreview ?? (existingPhotoUrl ? (
+                  <img src={existingPhotoUrl} alt="Dog" className="w-full h-full object-cover" />
+                ) : (
+                  <span className="text-5xl">📷</span>
+                ))}
+              </div>
+
+              <div className="flex-1 w-full">
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/jpeg,image/png"
+                  className="hidden"
+                  onChange={handlePhotoChange}
+                />
+                <Button
+                  type="button"
+                  variant="secondary"
+                  onClick={() => fileInputRef.current?.click()}
+                >
+                  Choose Photo
+                </Button>
+                <p className="text-xs text-text-light mt-2">
+                  JPEG or PNG, up to 5 MB, max 2000×2000 pixels.
+                </p>
+                {photoFile && (
+                  <p className="text-xs text-green-700 mt-1">
+                    Selected: {photoFile.name} ({Math.round(photoFile.size / 1024)} KB)
+                  </p>
+                )}
+              </div>
             </div>
           </div>
 
           {/* Form Actions */}
-          <div className="flex gap-4">
+          <div className="flex flex-col sm:flex-row gap-4">
             <Button
               type="button"
               variant="secondary"

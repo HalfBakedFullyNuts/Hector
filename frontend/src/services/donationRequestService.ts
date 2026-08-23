@@ -1,189 +1,146 @@
 /**
- * Donation Request Service
- * Handles all donation request-related API calls
+ * Donation Request Service — all request/response API calls (real backend)
  */
 
 import { apiClient } from './apiClient';
-import { API_ENDPOINTS } from '../config/api';
 import type {
   BloodDonationRequest,
+  BloodDonationRequestWithCount,
+  ClinicRequest,
+  CompatibleRequest,
   DonationRequestCreate,
+  DonationRequestUpdate,
+  DonationRequestWithDistance,
   DonationResponse,
   DonationResponseCreate,
+  RequestStatus,
+  ResponseStatus,
 } from '../types/donationRequest';
-import { RequestUrgency, RequestStatus, ResponseStatus } from '../types/donationRequest';
-import { BloodType } from '../types/dog';
 
-const MOCK_REQUESTS: BloodDonationRequest[] = [
-  {
-    id: 'req-1',
-    clinic_id: 'clinic-1',
-    urgency: RequestUrgency.CRITICAL,
-    status: RequestStatus.OPEN,
-    blood_type_needed: BloodType.DEA_1_1_NEGATIVE,
-    volume_ml: 450,
-    needed_by_date: '2023-11-30',
-    reason_for_transfusion: 'Urgent need for a surgery case. Universal donor preferred.',
-    patient_breed: 'Labrador',
-    contact_person: 'Dr. Smith',
-    contact_phone: '555-0123',
-    special_notes: null,
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
-    clinic: {
-      id: 'clinic-1',
-      name: 'City Vet Clinic',
-      address: '123 Main St',
-      city: 'New York',
-    },
-  },
-  {
-    id: 'req-2',
-    clinic_id: 'clinic-2',
-    urgency: RequestUrgency.ROUTINE,
-    status: RequestStatus.OPEN,
-    blood_type_needed: BloodType.DEA_1_1_POSITIVE,
-    volume_ml: 300,
-    needed_by_date: '2023-12-05',
-    reason_for_transfusion: 'Scheduled procedure requiring backup blood supply.',
-    patient_breed: 'Poodle',
-    contact_person: 'Nurse Joy',
-    contact_phone: '555-0456',
-    special_notes: null,
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
-    clinic: {
-      id: 'clinic-2',
-      name: 'Paws & Claws Hospital',
-      address: '456 Oak Ave',
-      city: 'Los Angeles',
-    },
-  },
-];
+export interface BrowseRequestFilters {
+  status?: RequestStatus;
+  blood_type?: string;
+  urgency?: string;
+  city?: string;
+  lat?: number;
+  lng?: number;
+  max_distance_km?: number;
+  limit?: number;
+  offset?: number;
+}
 
-const MOCK_RESPONSES: DonationResponse[] = [
-  {
-    id: 'resp-1',
-    request_id: 'req-3',
-    dog_id: 'dog-1',
-    owner_id: 'dev-owner-001',
-    status: ResponseStatus.PENDING,
-    response_message: 'Can donate anytime this week.',
-    created_at: new Date(Date.now() - 86400000).toISOString(), // 1 day ago
-    updated_at: new Date().toISOString(),
-    dog: {
-      id: 'dog-1',
-      name: 'Buddy',
-      breed: 'Golden Retriever',
-      blood_type: BloodType.DEA_1_1_NEGATIVE,
-    },
-  },
-];
+const REQUESTS_BASE = '/requests';
 
 export const donationRequestService = {
-  /**
-   * Get all donation requests (with optional filters)
-   */
-  async getRequests(_params?: {
-    status?: RequestStatus;
-    clinic_id?: string;
-  }): Promise<BloodDonationRequest[]> {
-    // Mock data for development
-    return new Promise((resolve) => {
-      setTimeout(() => resolve(MOCK_REQUESTS), 500);
-    });
-    // const response = await apiClient.get<BloodDonationRequest[]>(
-    //   API_ENDPOINTS.DONATION_REQUESTS,
-    //   { params }
-    // );
-    // return response.data;
-  },
-
-  /**
-   * Get compatible requests for a specific dog
-   */
-  async getCompatibleRequests(dogId: string): Promise<BloodDonationRequest[]> {
-    const response = await apiClient.get<BloodDonationRequest[]>(
-      `${API_ENDPOINTS.DONATION_REQUESTS}/compatible`,
-      { params: { dog_id: dogId } }
+  /** T-501/T-1004: public listing with optional filters incl. geo */
+  async getRequests(
+    params?: BrowseRequestFilters
+  ): Promise<DonationRequestWithDistance[]> {
+    const response = await apiClient.get<DonationRequestWithDistance[]>(
+      REQUESTS_BASE,
+      { params }
     );
     return response.data;
   },
 
-  /**
-   * Get request by ID
-   */
+  /** T-604: compatible requests for one of my dogs (auth + ownership enforced) */
+  async getCompatibleRequests(dogId: string): Promise<CompatibleRequest[]> {
+    const response = await apiClient.get<CompatibleRequest[]>(
+      `${REQUESTS_BASE}/compatible`,
+      { params: { dog_id: dogId, limit: 100 } }
+    );
+    return response.data;
+  },
+
+  /** T-502: includes real response_count */
   async getRequestById(requestId: string): Promise<BloodDonationRequest> {
-    const response = await apiClient.get<BloodDonationRequest>(
-      `${API_ENDPOINTS.DONATION_REQUESTS}/${requestId}`
+    const response = await apiClient.get(
+      `${REQUESTS_BASE}/${requestId}`
     );
-    return response.data;
+    return response.data as BloodDonationRequest;
   },
 
-  /**
-   * Create a new donation request (clinic staff only)
-   */
   async createRequest(
     data: DonationRequestCreate
   ): Promise<BloodDonationRequest> {
     const response = await apiClient.post<BloodDonationRequest>(
-      API_ENDPOINTS.DONATION_REQUESTS,
+      REQUESTS_BASE,
       data
     );
     return response.data;
   },
 
-  /**
-   * Respond to a donation request
-   */
+  /** T-503: urgency/volume/date/patient_info only; owning staff only */
+  async updateRequest(
+    requestId: string,
+    data: DonationRequestUpdate
+  ): Promise<BloodDonationRequest> {
+    const response = await apiClient.put<BloodDonationRequest>(
+      `${REQUESTS_BASE}/${requestId}`,
+      data
+    );
+    return response.data;
+  },
+
+  /** T-504 */
+  async cancelRequest(requestId: string): Promise<BloodDonationRequest> {
+    const response = await apiClient.post<BloodDonationRequest>(
+      `${REQUESTS_BASE}/${requestId}/cancel`
+    );
+    return response.data;
+  },
+
   async respondToRequest(
     requestId: string,
     data: DonationResponseCreate
   ): Promise<DonationResponse> {
     const response = await apiClient.post<DonationResponse>(
-      `${API_ENDPOINTS.DONATION_REQUESTS}/${requestId}/respond`,
+      `${REQUESTS_BASE}/${requestId}/respond`,
       data
     );
     return response.data;
   },
 
-  /**
-   * Get responses for a specific request (clinic staff only)
-   */
+  /** T-601: owning clinic staff only */
   async getRequestResponses(
     requestId: string,
     status?: ResponseStatus
   ): Promise<DonationResponse[]> {
     const response = await apiClient.get<DonationResponse[]>(
-      `${API_ENDPOINTS.DONATION_REQUESTS}/${requestId}/responses`,
-      { params: { status } }
+      `${REQUESTS_BASE}/${requestId}/responses`,
+      { params: status ? { status } : undefined }
     );
     return response.data;
   },
 
-  /**
-   * Get user's own responses (dog owner)
-   */
-  async getMyResponses(): Promise<DonationResponse[]> {
-    // Mock data for development
-    return new Promise((resolve) => {
-      setTimeout(() => resolve(MOCK_RESPONSES), 500);
-    });
-    // const response = await apiClient.get<DonationResponse[]>(
-    //   `${API_ENDPOINTS.DONATION_REQUESTS}/my-responses`
-    // );
-    // return response.data;
+  /** T-602 */
+  async getMyResponses(status?: ResponseStatus): Promise<DonationResponse[]> {
+    const response = await apiClient.get<DonationResponse[]>(
+      `${REQUESTS_BASE}/my-responses`,
+      { params: status ? { status } : undefined }
+    );
+    return response.data;
   },
 
-  /**
-   * Mark response as completed (clinic staff only)
-   */
+  /** T-505/T-901: my clinic's requests with response counts */
+  async getMyClinicRequests(status?: RequestStatus): Promise<ClinicRequest[]> {
+    const response = await apiClient.get<ClinicRequest[]>(
+      '/clinics/my-requests',
+      { params: status ? { status } : undefined }
+    );
+    return response.data;
+  },
+
+  /** T-603: mark an ACCEPTED response completed; sets dog's last donation date */
   async completeResponse(responseId: string): Promise<DonationResponse> {
     const response = await apiClient.post<DonationResponse>(
-      `${API_ENDPOINTS.DONATION_REQUESTS}/responses/${responseId}/complete`
+      `${REQUESTS_BASE}/responses/${responseId}/complete`
     );
     return response.data;
   },
 };
+
+// Re-export for consumers that imported the count-bearing detail type.
+export type { BloodDonationRequestWithCount };
 
 export default donationRequestService;

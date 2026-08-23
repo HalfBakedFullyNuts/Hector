@@ -80,6 +80,30 @@ export const authService = {
   getAccessToken(): string | null {
     return localStorage.getItem('access_token');
   },
+
+  /** T-1008: always-200 request for a reset email */
+  async forgotPassword(email: string): Promise<{ message: string; dev_token?: string }> {
+    const response = await apiClient.post('/auth/forgot-password', { email });
+    return response.data;
+  },
+
+  /** T-1008: consume token and set new password */
+  async resetPassword(token: string, newPassword: string): Promise<{ message: string }> {
+    const response = await apiClient.post('/auth/reset-password', {
+      token,
+      new_password: newPassword,
+    });
+    return response.data;
+  },
+
+  /** T-1004: store optional owner coordinates */
+  async updateMyLocation(latitude: number, longitude: number): Promise<User> {
+    const response = await apiClient.patch<User>(API_ENDPOINTS.ME, {
+      latitude,
+      longitude,
+    });
+    return response.data;
+  },
 };
 
 export default authService;
